@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-01
 **Author:** Orel + Claude
-**Status:** Approved
+**Status:** SUPERSEDED by 2026-03-01-bootstrap-networking-design-v2.md
 
 ## Context
 

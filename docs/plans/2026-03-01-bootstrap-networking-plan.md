@@ -1,6 +1,7 @@
 # Stage 1: Bootstrap & Networking Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **STATUS: SUPERSEDED** - This plan was for the v1 monolithic module architecture.
+> The project was refactored to per-resource modules. See design-v2.md for current architecture.
 
 **Goal:** Create the networking foundation (VPC, subnets, NAT, firewall, PSA) as a reusable Terraform module with layer-based state isolation.
 
