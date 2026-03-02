@@ -67,7 +67,19 @@ GKE_PoC/
 │   │   └── tfvars/
 │   │       └── orel/
 │   │           └── dev.tfvars       # orel dev configuration
-│   └── database/                    # Layer 2
+│   ├── database/                    # Layer 2
+│   │   ├── main.tf                  # Module calls with for_each
+│   │   ├── variables.tf
+│   │   ├── outputs.tf
+│   │   ├── locals.tf
+│   │   ├── data.tf                  # terraform_remote_state from networking
+│   │   ├── providers.tf
+│   │   ├── backend.tf               # Dynamic - no hardcoded prefix
+│   │   ├── versions.tf
+│   │   └── tfvars/
+│   │       └── orel/
+│   │           └── dev.tfvars       # orel dev configuration
+│   └── compute/                     # Layer 3
 │       ├── main.tf                  # Module calls with for_each
 │       ├── variables.tf
 │       ├── outputs.tf
@@ -87,7 +99,9 @@ GKE_PoC/
 │   ├── psa/                         # google_compute_global_address + google_service_networking_connection
 │   ├── project_api/                 # google_project_service
 │   ├── cloud_sql/                   # google_sql_database_instance + google_sql_database
-│   └── service_account/             # google_service_account + google_project_iam_member
+│   ├── service_account/             # google_service_account + google_project_iam_member
+│   ├── gke_cluster/                 # google_container_cluster
+│   └── gke_node_pool/               # google_container_node_pool
 └── docs/
     ├── plans/                       # Design docs
     ├── gcp-terraform-blueprint.md   # Full architecture blueprint
@@ -120,7 +134,14 @@ terraform -chdir=gob/database validate
 terraform -chdir=gob/database plan -var-file=tfvars/orel/dev.tfvars
 terraform -chdir=gob/database apply -var-file=tfvars/orel/dev.tfvars
 
+# --- Compute Layer (requires networking to be applied first) ---
+terraform -chdir=gob/compute init -backend-config="prefix=orel/dev/compute"
+terraform -chdir=gob/compute validate
+terraform -chdir=gob/compute plan -var-file=tfvars/orel/dev.tfvars
+terraform -chdir=gob/compute apply -var-file=tfvars/orel/dev.tfvars
+
 # --- Destroy (reverse order!) ---
+terraform -chdir=gob/compute destroy -var-file=tfvars/orel/dev.tfvars
 terraform -chdir=gob/database destroy -var-file=tfvars/orel/dev.tfvars
 terraform -chdir=gob/networking destroy -var-file=tfvars/orel/dev.tfvars
 ```
@@ -132,6 +153,8 @@ terraform -chdir=gob/networking init '-backend-config=prefix=orel/dev/networking
 terraform -chdir=gob/networking plan '-var-file=tfvars/orel/dev.tfvars'
 terraform -chdir=gob/database init '-backend-config=prefix=orel/dev/database'
 terraform -chdir=gob/database plan '-var-file=tfvars/orel/dev.tfvars'
+terraform -chdir=gob/compute init '-backend-config=prefix=orel/dev/compute'
+terraform -chdir=gob/compute plan '-var-file=tfvars/orel/dev.tfvars'
 ```
 
 ### Switch client/env (re-init)
@@ -139,6 +162,7 @@ terraform -chdir=gob/database plan '-var-file=tfvars/orel/dev.tfvars'
 ```bash
 terraform -chdir=gob/networking init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/networking"
 terraform -chdir=gob/database init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/database"
+terraform -chdir=gob/compute init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/compute"
 ```
 
 ## Coding Conventions
@@ -154,8 +178,8 @@ terraform -chdir=gob/database init -reconfigure -backend-config="prefix=OTHER_CL
 ## 7-Stage Roadmap
 
 1. **Bootstrap & Networking** - code ready, validated, NOT yet applied
-2. **Data Layer** - CURRENT (code ready, validated, NOT yet applied)
-3. Compute Layer - GKE Standard with Spot Instances and Autoscaling
+2. **Data Layer** - code ready, validated, NOT yet applied
+3. **Compute Layer** - CURRENT (code ready, validated, NOT yet applied)
 4. Identity & Ingress - Workload Identity and Regional ALB (NEGs)
 5. Application Deployment - Online Boutique + Cloud SQL Proxy sidecar
 6. CI/CD - GitHub Actions with Workload Identity Federation (WIF)
@@ -208,11 +232,29 @@ terraform -chdir=gob/database init -reconfigure -backend-config="prefix=OTHER_CL
 | IAM Binding | roles/cloudsql.client → GSA |
 | API | sqladmin.googleapis.com |
 
+### Stage 3: Compute Layer - CODE READY, NOT APPLIED
+
+**What's done:**
+- 2 new per-resource modules (gke_cluster, gke_node_pool)
+- Layer code at `gob/compute/` with dynamic backend
+- Client config at `gob/compute/tfvars/orel/dev.tfvars`
+- `terraform init` successful, `terraform validate` successful
+- Reads networking outputs via `terraform_remote_state`
+- Design doc: `docs/plans/2026-03-02-compute-layer-design.md`
+
+**Compute resources (~3 total):**
+| Resource | Name |
+|----------|------|
+| GKE Cluster | orel-gob-dev-euw1-gke-main (Zonal europe-west1-b, Private nodes, WI enabled) |
+| Node Pool | orel-gob-dev-euw1-gke-main-spot (Spot e2-medium, autoscaling 1-3) |
+| API | container.googleapis.com |
+
 **What's next:**
 1. Apply networking first: `terraform -chdir=gob/networking apply -var-file=tfvars/orel/dev.tfvars`
 2. Then apply database: `terraform -chdir=gob/database apply -var-file=tfvars/orel/dev.tfvars`
-3. Verify in GCP Console (checklists below)
-4. Start Stage 3: Compute Layer
+3. Then apply compute: `terraform -chdir=gob/compute apply -var-file=tfvars/orel/dev.tfvars`
+4. Verify in GCP Console (checklists below)
+5. Start Stage 4: Identity & Ingress
 
 ### GCP Console Verification Checklist - Networking (after apply):
 1. **VPC Networks** - `orel-gob-dev-euw1-vpc-main` exists, Regional routing, no auto subnets
@@ -230,9 +272,18 @@ terraform -chdir=gob/database init -reconfigure -backend-config="prefix=OTHER_CL
 5. **IAM > Service Accounts** - `orel-gob-dev-euw1-sa-btq-sql@orel-bh-sandbox.iam.gserviceaccount.com`
 6. **IAM > Permissions** - GSA has `roles/cloudsql.client`
 
+### GCP Console Verification Checklist - Compute (after apply):
+1. **Kubernetes Engine > Clusters** — `orel-gob-dev-euw1-gke-main` exists, Zonal (europe-west1-b), Standard mode
+2. **Cluster > Networking** — VPC-native, Pod range 10.4.0.0/14, Service range 10.8.0.0/20, Private cluster (nodes private, endpoint public)
+3. **Cluster > Security** — Workload Identity enabled, pool `orel-bh-sandbox.svc.id.goog`
+4. **Cluster > Nodes** — Pool `orel-gob-dev-euw1-gke-main-spot`, e2-medium, Spot, autoscaling 1-3, auto-repair, auto-upgrade
+5. **Master Authorized Networks** — configured (0.0.0.0/0 in dev)
+
 ## Design Documents
 
 - `docs/plans/2026-03-01-bootstrap-networking-design-v2.md` - Networking design (approved)
 - `docs/plans/2026-03-02-data-layer-design.md` - Data Layer design and implementation plan
+- `docs/plans/2026-03-02-compute-layer-design.md` - Compute Layer design document
+- `docs/plans/2026-03-02-compute-layer-implementation.md` - Compute Layer implementation plan
 - `docs/gcp-terraform-blueprint.md` - Full architecture blueprint for client delivery
 - `docs/client-intake-questionnaire.md` - Architecture decision questionnaire
