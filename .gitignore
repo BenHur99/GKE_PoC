@@ -9,10 +9,8 @@
 crash.log
 crash.*.log
 
-# Exclude tfvars files that may contain secrets
-# BUT include .auto.tfvars which contain non-secret configuration
-*.tfvars
-!*.auto.tfvars
+# Terraform plan output files
+*.tfplan
 
 # Ignore override files as they are usually used to override resources locally and so
 # are not checked in

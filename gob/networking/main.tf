@@ -4,7 +4,7 @@
 
 module "apis" {
   for_each = toset(var.apis)
-  source   = "../../../../modules/project_api"
+  source   = "../../modules/project_api"
 
   project_id = var.project_id
   api        = each.value
@@ -16,7 +16,7 @@ module "apis" {
 
 module "vpcs" {
   for_each = var.vpcs
-  source   = "../../../../modules/vpc"
+  source   = "../../modules/vpc"
 
   name       = "${local.naming_prefix}-vpc-${each.key}"
   project_id = var.project_id
@@ -30,7 +30,7 @@ module "vpcs" {
 
 module "subnets" {
   for_each = var.subnets
-  source   = "../../../../modules/subnet"
+  source   = "../../modules/subnet"
 
   name                  = "${local.naming_prefix}-subnet-${each.key}"
   project_id            = var.project_id
@@ -49,7 +49,7 @@ module "subnets" {
 
 module "firewall_rules" {
   for_each = var.firewall_rules
-  source   = "../../../../modules/firewall_rule"
+  source   = "../../modules/firewall_rule"
 
   name               = "${local.naming_prefix}-fw-${each.key}"
   project_id         = var.project_id
@@ -71,7 +71,7 @@ module "firewall_rules" {
 
 module "cloud_nats" {
   for_each = var.cloud_nats
-  source   = "../../../../modules/cloud_nat"
+  source   = "../../modules/cloud_nat"
 
   name                               = "${local.naming_prefix}-${each.key}"
   project_id                         = var.project_id
@@ -90,7 +90,7 @@ module "cloud_nats" {
 
 module "psa_connections" {
   for_each = var.psa_connections
-  source   = "../../../../modules/psa"
+  source   = "../../modules/psa"
 
   name       = "${local.naming_prefix}-psa-${each.key}"
   project_id = var.project_id

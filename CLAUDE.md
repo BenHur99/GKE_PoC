@@ -4,7 +4,7 @@
 
 Production-ready, multi-tenant IaC product for GKE on GCP.
 Product name: **GOB** (Google Online Boutique).
-Client: **Sela**. GCP Project: `orel-bh-sandbox`. Region: `europe-west1`.
+Client: **orel**. GCP Project: `orel-bh-sandbox`. Region: `europe-west1`.
 Budget: $70/month using ephemeral infrastructure (create morning, destroy evening).
 
 ### Owner Context
@@ -15,6 +15,12 @@ Communicate in **Hebrew** unless asked otherwise.
 
 ## Architecture
 
+### Single Codebase, Multi-Client
+
+One set of `.tf` files per layer under `gob/`. Client/env-specific configuration lives in
+`gob/{layer}/tfvars/{client}/{env}.tfvars`. New client = new tfvars folder, no code duplication.
+The top-level directory is named after the product (`gob/`).
+
 ### Per-Resource Modules
 
 Each Terraform module wraps a single GCP resource (or tightly-coupled pair).
@@ -24,7 +30,7 @@ The layer's `main.tf` orchestrates modules with `for_each` and constructs names 
 ### Naming Convention
 
 **Format:** `{client}-{product}-{env}-{region_short}-{resource_type}-{name}`
-**Example:** `sela-gob-dev-euw1-vpc-main`
+**Example:** `orel-gob-dev-euw1-vpc-main`
 
 Region mapping: `europe-west1` = `euw1`
 
@@ -32,12 +38,12 @@ Region mapping: `europe-west1` = `euw1`
 
 Each infrastructure layer has its own Terraform state file (Terragrunt-like, pure Terraform).
 Layers reference each other via `terraform_remote_state`.
-Layer folders do NOT have number prefixes (just `networking/`, not `1-networking/`).
+Backend prefix is **dynamic** - set via `terraform init -backend-config="prefix=CLIENT/ENV/LAYER"`.
 
 ### File Structure per Layer
 
-Every layer (root module) has the FULL set of manifests:
-`main.tf`, `variables.tf`, `outputs.tf`, `locals.tf`, `data.tf`, `providers.tf`, `backend.tf`, `versions.tf`, `<layer>.auto.tfvars`
+Every layer has: `main.tf`, `variables.tf`, `outputs.tf`, `locals.tf`, `data.tf`, `providers.tf`, `backend.tf`, `versions.tf`
+Plus `tfvars/{client}/{env}.tfvars` for each client/environment combination.
 
 ### File Structure per Module
 
@@ -48,19 +54,30 @@ Single `main.tf` contains all resources. No splitting by resource type.
 
 ```
 GKE_PoC/
-├── clients/sela/dev/
-│   ├── networking/          # Layer 1 - state: sela/dev/networking
-│   ├── database/            # Layer 2 (future)
-│   ├── compute/             # Layer 3 (future)
-│   └── identity/            # Layer 4 (future)
+├── gob/                             # Product layers (named after product)
+│   └── networking/                  # Layer 1
+│       ├── main.tf                  # Module calls with for_each
+│       ├── variables.tf
+│       ├── outputs.tf
+│       ├── locals.tf
+│       ├── data.tf
+│       ├── providers.tf
+│       ├── backend.tf               # Dynamic - no hardcoded prefix
+│       ├── versions.tf
+│       └── tfvars/
+│           └── orel/
+│               └── dev.tfvars       # orel dev configuration
 ├── modules/
-│   ├── vpc/                 # google_compute_network
-│   ├── subnet/              # google_compute_subnetwork
-│   ├── firewall_rule/       # google_compute_firewall
-│   ├── cloud_nat/           # google_compute_router + google_compute_router_nat
-│   ├── psa/                 # google_compute_global_address + google_service_networking_connection
-│   └── project_api/         # google_project_service
-└── docs/plans/              # Design docs and implementation plans
+│   ├── vpc/                         # google_compute_network
+│   ├── subnet/                      # google_compute_subnetwork
+│   ├── firewall_rule/               # google_compute_firewall
+│   ├── cloud_nat/                   # google_compute_router + google_compute_router_nat
+│   ├── psa/                         # google_compute_global_address + google_service_networking_connection
+│   └── project_api/                 # google_project_service
+└── docs/
+    ├── plans/                       # Design docs
+    ├── gcp-terraform-blueprint.md   # Full architecture blueprint
+    └── client-intake-questionnaire.md
 ```
 
 ## Tech Stack
@@ -68,21 +85,58 @@ GKE_PoC/
 - Terraform >= 1.6 (currently v1.14.6 installed)
 - Google Provider >= 6.0 (currently v7.21.0)
 - GCS Backend: bucket `terraform-states-gcs`
-- State key pattern: `{client}/{env}/{layer}`
+- State key pattern: `{client}/{env}/{layer}` (set via `-backend-config`)
+
+## How to Run
+
+**Run all commands from the project root:** `C:\Users\user\Desktop\GKE-PoC\GKE_PoC`
+
+### Git Bash
+
+```bash
+# Init with dynamic backend
+terraform -chdir=gob/networking init -backend-config="prefix=orel/dev/networking"
+
+# Validate
+terraform -chdir=gob/networking validate
+
+# Plan
+terraform -chdir=gob/networking plan -var-file=tfvars/orel/dev.tfvars
+
+# Apply
+terraform -chdir=gob/networking apply -var-file=tfvars/orel/dev.tfvars
+
+# Destroy
+terraform -chdir=gob/networking destroy -var-file=tfvars/orel/dev.tfvars
+```
+
+### PowerShell - IMPORTANT: single quotes around flags with slashes
+
+```powershell
+terraform -chdir=gob/networking init '-backend-config=prefix=orel/dev/networking'
+terraform -chdir=gob/networking plan '-var-file=tfvars/orel/dev.tfvars'
+terraform -chdir=gob/networking apply '-var-file=tfvars/orel/dev.tfvars'
+```
+
+### Switch client/env (re-init)
+
+```bash
+terraform -chdir=gob/networking init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/networking"
+```
 
 ## Coding Conventions
 
 - All variables that represent collections use `map(object)` with `for_each` (never `list`)
 - Even singleton resources (VPC) use `for_each` with a single-entry map for consistency
 - Resources referencing other resources use a `vpc_key` field to link via the map key
-- `.auto.tfvars` files are tracked in git (non-secret configuration)
-- Regular `.tfvars` files are gitignored (may contain secrets)
+- `.tfvars` files under `gob/*/tfvars/` are tracked in git (non-secret configuration)
+- Secrets go in environment variables or Secret Manager, never in tfvars
 - Use `optional()` with defaults in variable type definitions
 - Commit messages follow conventional commits: `feat()`, `fix()`, `refactor()`, `docs()`, `chore()`
 
 ## 7-Stage Roadmap
 
-1. **Bootstrap & Networking** - CURRENT (code done, validated, NOT yet applied)
+1. **Bootstrap & Networking** - CURRENT (code ready, validated, NOT yet applied)
 2. Data Layer - Cloud SQL (PostgreSQL) with Private IP and IAM Auth
 3. Compute Layer - GKE Standard with Spot Instances and Autoscaling
 4. Identity & Ingress - Workload Identity and Regional ALB (NEGs)
@@ -92,41 +146,40 @@ GKE_PoC/
 
 ## Current Status
 
-### Stage 1: Networking - CODE COMPLETE, NOT APPLIED
+### Stage 1: Networking - CODE READY, NOT APPLIED
 
 **What's done:**
-- 6 per-resource modules created and reviewed (vpc, subnet, firewall_rule, cloud_nat, psa, project_api)
-- Client layer (`clients/sela/dev/networking/`) with 9 files
-- `terraform init` successful (GCS backend connected)
-- `terraform validate` successful
-- `terraform plan` successful - **15 resources to create**
-- Design doc v2: `docs/plans/2026-03-01-bootstrap-networking-design-v2.md`
+- 6 per-resource modules (vpc, subnet, firewall_rule, cloud_nat, psa, project_api)
+- Layer code at `gob/networking/` with dynamic backend
+- Client config at `gob/networking/tfvars/orel/dev.tfvars`
+- `terraform init` successful, `terraform validate` successful, `terraform plan` = 15 resources
+- Architecture docs: `docs/gcp-terraform-blueprint.md`, `docs/client-intake-questionnaire.md`
 
 **What's next:**
-- Run `terraform apply` in `clients/sela/dev/networking/`
-- Verify in GCP Console (checklist in design doc)
-- Then start Stage 2: Data Layer
+1. Run `terraform apply` (see "How to Run" above)
+2. Verify in GCP Console (checklist below)
+3. Start Stage 2: Data Layer
 
 ### Resources that will be created (15 total):
 | Resource | Name |
 |----------|------|
-| VPC | sela-gob-dev-euw1-vpc-main |
-| Subnet (GKE) | sela-gob-dev-euw1-subnet-gke (10.0.0.0/20) |
-| Subnet (Proxy) | sela-gob-dev-euw1-subnet-proxy (10.0.16.0/23) |
-| Secondary: Pods | sela-gob-dev-euw1-subnet-gke-pods (10.4.0.0/14) |
-| Secondary: Services | sela-gob-dev-euw1-subnet-gke-services (10.8.0.0/20) |
-| FW deny-all | sela-gob-dev-euw1-fw-deny-all-ingress |
-| FW IAP SSH | sela-gob-dev-euw1-fw-allow-iap-ssh |
-| FW Health Checks | sela-gob-dev-euw1-fw-allow-health-checks |
-| FW Proxy->Backend | sela-gob-dev-euw1-fw-allow-proxy-to-backends |
-| Cloud Router | sela-gob-dev-euw1-main-router |
-| Cloud NAT | sela-gob-dev-euw1-main-nat |
-| PSA Allocation | sela-gob-dev-euw1-psa-google-managed (10.16.0.0/16) |
+| VPC | orel-gob-dev-euw1-vpc-main |
+| Subnet (GKE) | orel-gob-dev-euw1-subnet-gke (10.0.0.0/20) |
+| Subnet (Proxy) | orel-gob-dev-euw1-subnet-proxy (10.0.16.0/23) |
+| Secondary: Pods | orel-gob-dev-euw1-subnet-gke-pods (10.4.0.0/14) |
+| Secondary: Services | orel-gob-dev-euw1-subnet-gke-services (10.8.0.0/20) |
+| FW deny-all | orel-gob-dev-euw1-fw-deny-all-ingress |
+| FW IAP SSH | orel-gob-dev-euw1-fw-allow-iap-ssh |
+| FW Health Checks | orel-gob-dev-euw1-fw-allow-health-checks |
+| FW Proxy->Backend | orel-gob-dev-euw1-fw-allow-proxy-to-backends |
+| Cloud Router | orel-gob-dev-euw1-main-router |
+| Cloud NAT | orel-gob-dev-euw1-main-nat |
+| PSA Allocation | orel-gob-dev-euw1-psa-google-managed (10.16.0.0/16) |
 | PSA Connection | servicenetworking.googleapis.com peering |
 | APIs | compute, container, servicenetworking, sqladmin |
 
 ### GCP Console Verification Checklist (after apply):
-1. **VPC Networks** - `sela-gob-dev-euw1-vpc-main` exists, Regional routing, no auto subnets
+1. **VPC Networks** - `orel-gob-dev-euw1-vpc-main` exists, Regional routing, no auto subnets
 2. **Subnets** - GKE subnet with secondary ranges, proxy subnet with REGIONAL_MANAGED_PROXY
 3. **Firewall** - 4 rules with correct priorities and sources
 4. **Cloud NAT** - NAT in europe-west1 with auto IPs
@@ -135,6 +188,6 @@ GKE_PoC/
 
 ## Design Documents
 
-- `docs/plans/2026-03-01-bootstrap-networking-design-v2.md` - Current approved design
-- `docs/plans/2026-03-01-bootstrap-networking-design.md` - Superseded v1 (historical)
-- `docs/plans/2026-03-01-bootstrap-networking-plan.md` - Superseded v1 plan (historical)
+- `docs/plans/2026-03-01-bootstrap-networking-design-v2.md` - Networking design (approved)
+- `docs/gcp-terraform-blueprint.md` - Full architecture blueprint for client delivery
+- `docs/client-intake-questionnaire.md` - Architecture decision questionnaire

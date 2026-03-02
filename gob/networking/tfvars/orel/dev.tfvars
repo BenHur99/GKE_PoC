@@ -2,7 +2,7 @@
 # Identity & Project
 # =============================================================================
 
-client_name  = "sela"
+client_name  = "orel"
 product_name = "gob"
 environment  = "dev"
 project_id   = "orel-bh-sandbox"

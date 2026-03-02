@@ -1,6 +1,6 @@
 # Stage 1: Bootstrap & Modular Networking - Design Document v2
 
-**Date:** 2026-03-01
+**Date:** 2026-03-01 (Updated: 2026-03-02)
 **Author:** Orel + Claude
 **Status:** Approved
 **Supersedes:** 2026-03-01-bootstrap-networking-design.md
@@ -23,6 +23,8 @@ This is Stage 1 of a 7-stage roadmap.
 2. **All module calls use for_each** - even singletons (consistency over pragmatism)
 3. **Unified naming convention** across all resources and layers
 4. **Each module is a single resource wrapper** - the layer's main.tf orchestrates them
+5. **Shared code + tfvars pattern** - one set of .tf files per layer, separate tfvars per client/env (no code duplication)
+6. **Dynamic backend** - prefix set at init time, not hardcoded
 
 ## Naming Convention
 
@@ -31,7 +33,7 @@ This is Stage 1 of a 7-stage roadmap.
 **Components:**
 | Component | Source | Example |
 |-----------|--------|---------|
-| client | var.client_name | sela |
+| client | var.client_name | orel |
 | product | var.product_name | gob |
 | env | var.environment | dev |
 | region_short | computed from var.region | euw1 |
@@ -46,36 +48,33 @@ This is Stage 1 of a 7-stage roadmap.
 **Examples:**
 | Resource | Full Name |
 |----------|-----------|
-| VPC | sela-gob-dev-euw1-vpc-main |
-| GKE Subnet | sela-gob-dev-euw1-subnet-gke |
-| Proxy Subnet | sela-gob-dev-euw1-subnet-proxy |
-| Firewall deny-all | sela-gob-dev-euw1-fw-deny-all-ingress |
-| Cloud Router | sela-gob-dev-euw1-router-main |
-| Cloud NAT | sela-gob-dev-euw1-nat-main |
-| PSA Range | sela-gob-dev-euw1-psa-google-managed |
-| GKE Cluster (future) | sela-gob-dev-euw1-gke-main |
-| Cloud SQL (future) | sela-gob-dev-euw1-sql-main |
+| VPC | orel-gob-dev-euw1-vpc-main |
+| GKE Subnet | orel-gob-dev-euw1-subnet-gke |
+| Proxy Subnet | orel-gob-dev-euw1-subnet-proxy |
+| Firewall deny-all | orel-gob-dev-euw1-fw-deny-all-ingress |
+| Cloud Router | orel-gob-dev-euw1-main-router |
+| Cloud NAT | orel-gob-dev-euw1-main-nat |
+| PSA Range | orel-gob-dev-euw1-psa-google-managed |
+| GKE Cluster (future) | orel-gob-dev-euw1-gke-main |
+| Cloud SQL (future) | orel-gob-dev-euw1-sql-main |
 
 ## Directory Structure
 
 ```
 GKE_PoC/
-├── clients/
-│   └── sela/
-│       └── dev/
-│           ├── 1-networking/
-│           │   ├── main.tf              # Module calls with for_each
-│           │   ├── variables.tf         # Variable declarations
-│           │   ├── outputs.tf           # Pass-through outputs
-│           │   ├── locals.tf            # naming_prefix, region_short
-│           │   ├── data.tf              # Data sources
-│           │   ├── providers.tf         # Provider config
-│           │   ├── backend.tf           # GCS backend
-│           │   ├── versions.tf          # Version constraints
-│           │   └── networking.auto.tfvars
-│           ├── 2-database/              # Stage 2
-│           ├── 3-compute/               # Stage 3
-│           └── 4-identity/              # Stage 4
+├── gob/                           # Product directory (shared code per layer)
+│   └── networking/                # Layer 1
+│       ├── main.tf                # Module calls with for_each
+│       ├── variables.tf           # Variable declarations
+│       ├── outputs.tf             # Pass-through outputs
+│       ├── locals.tf              # naming_prefix, region_short
+│       ├── data.tf                # Data sources
+│       ├── providers.tf           # Provider config
+│       ├── backend.tf             # Dynamic GCS backend (prefix at init time)
+│       ├── versions.tf            # Version constraints
+│       └── tfvars/                # Per-client, per-env configuration
+│           └── orel/
+│               └── dev.tfvars
 ├── modules/
 │   ├── vpc/
 │   │   ├── main.tf
@@ -103,6 +102,37 @@ GKE_PoC/
 │       └── outputs.tf
 └── docs/
     └── plans/
+```
+
+## Running Terraform
+
+**From project root (Git Bash):**
+```bash
+cd gob/networking
+
+# Init (set backend prefix per client/env)
+terraform init -backend-config="prefix=orel/dev/networking"
+
+# Validate
+terraform validate
+
+# Plan
+terraform plan -var-file=tfvars/orel/dev.tfvars
+
+# Apply
+terraform apply -var-file=tfvars/orel/dev.tfvars
+```
+
+**Adding a new client/env:**
+```bash
+# Create the tfvars file
+mkdir -p gob/networking/tfvars/newclient
+cp gob/networking/tfvars/orel/dev.tfvars gob/networking/tfvars/newclient/prod.tfvars
+# Edit with client-specific values
+
+# Init with different prefix (separate state)
+terraform init -reconfigure -backend-config="prefix=newclient/prod/networking"
+terraform plan -var-file=tfvars/newclient/prod.tfvars
 ```
 
 ## Module Specifications
@@ -340,7 +370,7 @@ variable "api" {
 # APIs
 module "apis" {
   for_each = toset(var.apis)
-  source   = "../../../../modules/project_api"
+  source   = "../../modules/project_api"
 
   project_id = var.project_id
   api        = each.value
@@ -349,7 +379,7 @@ module "apis" {
 # VPCs
 module "vpcs" {
   for_each = var.vpcs
-  source   = "../../../../modules/vpc"
+  source   = "../../modules/vpc"
 
   name       = "${local.naming_prefix}-vpc-${each.key}"
   project_id = var.project_id
@@ -360,7 +390,7 @@ module "vpcs" {
 # Subnets
 module "subnets" {
   for_each = var.subnets
-  source   = "../../../../modules/subnet"
+  source   = "../../modules/subnet"
 
   name                  = "${local.naming_prefix}-subnet-${each.key}"
   project_id            = var.project_id
@@ -376,7 +406,7 @@ module "subnets" {
 # Firewall Rules
 module "firewall_rules" {
   for_each = var.firewall_rules
-  source   = "../../../../modules/firewall_rule"
+  source   = "../../modules/firewall_rule"
 
   name               = "${local.naming_prefix}-fw-${each.key}"
   project_id         = var.project_id
@@ -395,7 +425,7 @@ module "firewall_rules" {
 # Cloud NAT (includes Router)
 module "cloud_nats" {
   for_each = var.cloud_nats
-  source   = "../../../../modules/cloud_nat"
+  source   = "../../modules/cloud_nat"
 
   name                               = "${local.naming_prefix}-${each.key}"
   project_id                         = var.project_id
@@ -411,7 +441,7 @@ module "cloud_nats" {
 # PSA
 module "psa_connections" {
   for_each = var.psa_connections
-  source   = "../../../../modules/psa"
+  source   = "../../modules/psa"
 
   name       = "${local.naming_prefix}-psa-${each.key}"
   project_id = var.project_id
@@ -426,7 +456,7 @@ module "psa_connections" {
 
 ```hcl
 # Identity
-client_name  = "sela"
+client_name  = "orel"
 product_name = "gob"
 environment  = "dev"
 
@@ -515,7 +545,7 @@ psa_connections = {
 }
 ```
 
-## Network Architecture (unchanged)
+## Network Architecture
 
 ```
                          Internet
@@ -525,11 +555,11 @@ psa_connections = {
                 +-----------v------------------------------------+
                 |              Custom VPC                          |
                 |                                                  |
-                |  sela-gob-dev-euw1-subnet-gke (10.0.0.0/20)    |
+                |  orel-gob-dev-euw1-subnet-gke (10.0.0.0/20)    |
                 |    +-- Pods:     10.4.0.0/14                    |
                 |    +-- Services: 10.8.0.0/20                    |
                 |                                                  |
-                |  sela-gob-dev-euw1-subnet-proxy (10.0.16.0/23)  |
+                |  orel-gob-dev-euw1-subnet-proxy (10.0.16.0/23)  |
                 |    purpose: REGIONAL_MANAGED_PROXY               |
                 |                                                  |
                 |           VPC Peering (PSA)                      |
@@ -541,7 +571,7 @@ psa_connections = {
 Firewall: deny-all -> allow IAP SSH -> allow health-checks -> allow proxy->backends
 ```
 
-## CIDR Allocation (unchanged)
+## CIDR Allocation
 
 | Range | Purpose | Size |
 |-------|---------|------|
@@ -550,3 +580,22 @@ Firewall: deny-all -> allow IAP SSH -> allow health-checks -> allow proxy->backe
 | 10.8.0.0/20 | GKE services (secondary) | 4,094 IPs |
 | 10.0.16.0/23 | ALB proxy-only | 510 IPs |
 | 10.16.0.0/16 | PSA (Cloud SQL) | 65,534 IPs |
+
+## Resources Created (15 total)
+
+| Resource | Name |
+|----------|------|
+| VPC | orel-gob-dev-euw1-vpc-main |
+| Subnet (GKE) | orel-gob-dev-euw1-subnet-gke (10.0.0.0/20) |
+| Subnet (Proxy) | orel-gob-dev-euw1-subnet-proxy (10.0.16.0/23) |
+| Secondary: Pods | orel-gob-dev-euw1-subnet-gke-pods (10.4.0.0/14) |
+| Secondary: Services | orel-gob-dev-euw1-subnet-gke-services (10.8.0.0/20) |
+| FW deny-all | orel-gob-dev-euw1-fw-deny-all-ingress |
+| FW IAP SSH | orel-gob-dev-euw1-fw-allow-iap-ssh |
+| FW Health Checks | orel-gob-dev-euw1-fw-allow-health-checks |
+| FW Proxy->Backend | orel-gob-dev-euw1-fw-allow-proxy-to-backends |
+| Cloud Router | orel-gob-dev-euw1-main-router |
+| Cloud NAT | orel-gob-dev-euw1-main-nat |
+| PSA Allocation | orel-gob-dev-euw1-psa-google-managed (10.16.0.0/16) |
+| PSA Connection | servicenetworking.googleapis.com peering |
+| APIs | compute, container, servicenetworking, sqladmin |
