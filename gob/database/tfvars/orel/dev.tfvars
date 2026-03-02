@@ -40,7 +40,7 @@ sql_instances = {
 # =============================================================================
 
 service_accounts = {
-  "boutique-sql" = {
+  "btq-sql" = {
     display_name = "Boutique Cloud SQL Client"
     description  = "GSA for Online Boutique application - Cloud SQL IAM authentication"
     roles        = ["roles/cloudsql.client"]

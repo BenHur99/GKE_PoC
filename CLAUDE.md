@@ -204,7 +204,7 @@ terraform -chdir=gob/database init -reconfigure -backend-config="prefix=OTHER_CL
 |----------|------|
 | Cloud SQL Instance | orel-gob-dev-euw1-sql-main (PostgreSQL 15, db-f1-micro) |
 | SQL Database | boutique |
-| Service Account | orel-gob-dev-euw1-sa-boutique-sql |
+| Service Account | orel-gob-dev-euw1-sa-btq-sql |
 | IAM Binding | roles/cloudsql.client → GSA |
 | API | sqladmin.googleapis.com |
 
@@ -227,7 +227,7 @@ terraform -chdir=gob/database init -reconfigure -backend-config="prefix=OTHER_CL
 2. **SQL > Connections** - Private IP from 10.16.x.x range, NO Public IP
 3. **SQL > Databases** - `boutique` database exists
 4. **SQL > Flags** - `cloudsql.iam_authentication = on`
-5. **IAM > Service Accounts** - `orel-gob-dev-euw1-sa-boutique-sql@orel-bh-sandbox.iam.gserviceaccount.com`
+5. **IAM > Service Accounts** - `orel-gob-dev-euw1-sa-btq-sql@orel-bh-sandbox.iam.gserviceaccount.com`
 6. **IAM > Permissions** - GSA has `roles/cloudsql.client`
 
 ## Design Documents
