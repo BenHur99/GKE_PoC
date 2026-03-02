@@ -55,12 +55,24 @@ Single `main.tf` contains all resources. No splitting by resource type.
 ```
 GKE_PoC/
 ├── gob/                             # Product layers (named after product)
-│   └── networking/                  # Layer 1
+│   ├── networking/                  # Layer 1
+│   │   ├── main.tf                  # Module calls with for_each
+│   │   ├── variables.tf
+│   │   ├── outputs.tf
+│   │   ├── locals.tf
+│   │   ├── data.tf
+│   │   ├── providers.tf
+│   │   ├── backend.tf               # Dynamic - no hardcoded prefix
+│   │   ├── versions.tf
+│   │   └── tfvars/
+│   │       └── orel/
+│   │           └── dev.tfvars       # orel dev configuration
+│   └── database/                    # Layer 2
 │       ├── main.tf                  # Module calls with for_each
 │       ├── variables.tf
 │       ├── outputs.tf
 │       ├── locals.tf
-│       ├── data.tf
+│       ├── data.tf                  # terraform_remote_state from networking
 │       ├── providers.tf
 │       ├── backend.tf               # Dynamic - no hardcoded prefix
 │       ├── versions.tf
@@ -73,7 +85,9 @@ GKE_PoC/
 │   ├── firewall_rule/               # google_compute_firewall
 │   ├── cloud_nat/                   # google_compute_router + google_compute_router_nat
 │   ├── psa/                         # google_compute_global_address + google_service_networking_connection
-│   └── project_api/                 # google_project_service
+│   ├── project_api/                 # google_project_service
+│   ├── cloud_sql/                   # google_sql_database_instance + google_sql_database
+│   └── service_account/             # google_service_account + google_project_iam_member
 └── docs/
     ├── plans/                       # Design docs
     ├── gcp-terraform-blueprint.md   # Full architecture blueprint
@@ -94,19 +108,20 @@ GKE_PoC/
 ### Git Bash
 
 ```bash
-# Init with dynamic backend
+# --- Networking Layer ---
 terraform -chdir=gob/networking init -backend-config="prefix=orel/dev/networking"
-
-# Validate
 terraform -chdir=gob/networking validate
-
-# Plan
 terraform -chdir=gob/networking plan -var-file=tfvars/orel/dev.tfvars
-
-# Apply
 terraform -chdir=gob/networking apply -var-file=tfvars/orel/dev.tfvars
 
-# Destroy
+# --- Database Layer (requires networking to be applied first) ---
+terraform -chdir=gob/database init -backend-config="prefix=orel/dev/database"
+terraform -chdir=gob/database validate
+terraform -chdir=gob/database plan -var-file=tfvars/orel/dev.tfvars
+terraform -chdir=gob/database apply -var-file=tfvars/orel/dev.tfvars
+
+# --- Destroy (reverse order!) ---
+terraform -chdir=gob/database destroy -var-file=tfvars/orel/dev.tfvars
 terraform -chdir=gob/networking destroy -var-file=tfvars/orel/dev.tfvars
 ```
 
@@ -115,13 +130,15 @@ terraform -chdir=gob/networking destroy -var-file=tfvars/orel/dev.tfvars
 ```powershell
 terraform -chdir=gob/networking init '-backend-config=prefix=orel/dev/networking'
 terraform -chdir=gob/networking plan '-var-file=tfvars/orel/dev.tfvars'
-terraform -chdir=gob/networking apply '-var-file=tfvars/orel/dev.tfvars'
+terraform -chdir=gob/database init '-backend-config=prefix=orel/dev/database'
+terraform -chdir=gob/database plan '-var-file=tfvars/orel/dev.tfvars'
 ```
 
 ### Switch client/env (re-init)
 
 ```bash
 terraform -chdir=gob/networking init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/networking"
+terraform -chdir=gob/database init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/database"
 ```
 
 ## Coding Conventions
@@ -136,8 +153,8 @@ terraform -chdir=gob/networking init -reconfigure -backend-config="prefix=OTHER_
 
 ## 7-Stage Roadmap
 
-1. **Bootstrap & Networking** - CURRENT (code ready, validated, NOT yet applied)
-2. Data Layer - Cloud SQL (PostgreSQL) with Private IP and IAM Auth
+1. **Bootstrap & Networking** - code ready, validated, NOT yet applied
+2. **Data Layer** - CURRENT (code ready, validated, NOT yet applied)
 3. Compute Layer - GKE Standard with Spot Instances and Autoscaling
 4. Identity & Ingress - Workload Identity and Regional ALB (NEGs)
 5. Application Deployment - Online Boutique + Cloud SQL Proxy sidecar
@@ -153,14 +170,8 @@ terraform -chdir=gob/networking init -reconfigure -backend-config="prefix=OTHER_
 - Layer code at `gob/networking/` with dynamic backend
 - Client config at `gob/networking/tfvars/orel/dev.tfvars`
 - `terraform init` successful, `terraform validate` successful, `terraform plan` = 15 resources
-- Architecture docs: `docs/gcp-terraform-blueprint.md`, `docs/client-intake-questionnaire.md`
 
-**What's next:**
-1. Run `terraform apply` (see "How to Run" above)
-2. Verify in GCP Console (checklist below)
-3. Start Stage 2: Data Layer
-
-### Resources that will be created (15 total):
+**Networking resources (15 total):**
 | Resource | Name |
 |----------|------|
 | VPC | orel-gob-dev-euw1-vpc-main |
@@ -178,7 +189,32 @@ terraform -chdir=gob/networking init -reconfigure -backend-config="prefix=OTHER_
 | PSA Connection | servicenetworking.googleapis.com peering |
 | APIs | compute, container, servicenetworking, sqladmin |
 
-### GCP Console Verification Checklist (after apply):
+### Stage 2: Data Layer - CODE READY, NOT APPLIED
+
+**What's done:**
+- 2 new per-resource modules (cloud_sql, service_account)
+- Layer code at `gob/database/` with dynamic backend
+- Client config at `gob/database/tfvars/orel/dev.tfvars`
+- `terraform validate` successful
+- Reads networking outputs via `terraform_remote_state`
+- Design doc: `docs/plans/2026-03-02-data-layer-design.md`
+
+**Database resources (~5 total):**
+| Resource | Name |
+|----------|------|
+| Cloud SQL Instance | orel-gob-dev-euw1-sql-main (PostgreSQL 15, db-f1-micro) |
+| SQL Database | boutique |
+| Service Account | orel-gob-dev-euw1-sa-boutique-sql |
+| IAM Binding | roles/cloudsql.client → GSA |
+| API | sqladmin.googleapis.com |
+
+**What's next:**
+1. Apply networking first: `terraform -chdir=gob/networking apply -var-file=tfvars/orel/dev.tfvars`
+2. Then apply database: `terraform -chdir=gob/database apply -var-file=tfvars/orel/dev.tfvars`
+3. Verify in GCP Console (checklists below)
+4. Start Stage 3: Compute Layer
+
+### GCP Console Verification Checklist - Networking (after apply):
 1. **VPC Networks** - `orel-gob-dev-euw1-vpc-main` exists, Regional routing, no auto subnets
 2. **Subnets** - GKE subnet with secondary ranges, proxy subnet with REGIONAL_MANAGED_PROXY
 3. **Firewall** - 4 rules with correct priorities and sources
@@ -186,8 +222,17 @@ terraform -chdir=gob/networking init -reconfigure -backend-config="prefix=OTHER_
 5. **PSA** - Allocated range 10.16.0.0/16 peered to servicenetworking
 6. **APIs** - 4 APIs enabled
 
+### GCP Console Verification Checklist - Database (after apply):
+1. **SQL > Instances** - `orel-gob-dev-euw1-sql-main` exists, PostgreSQL 15, db-f1-micro
+2. **SQL > Connections** - Private IP from 10.16.x.x range, NO Public IP
+3. **SQL > Databases** - `boutique` database exists
+4. **SQL > Flags** - `cloudsql.iam_authentication = on`
+5. **IAM > Service Accounts** - `orel-gob-dev-euw1-sa-boutique-sql@orel-bh-sandbox.iam.gserviceaccount.com`
+6. **IAM > Permissions** - GSA has `roles/cloudsql.client`
+
 ## Design Documents
 
 - `docs/plans/2026-03-01-bootstrap-networking-design-v2.md` - Networking design (approved)
+- `docs/plans/2026-03-02-data-layer-design.md` - Data Layer design and implementation plan
 - `docs/gcp-terraform-blueprint.md` - Full architecture blueprint for client delivery
 - `docs/client-intake-questionnaire.md` - Architecture decision questionnaire
