@@ -79,12 +79,24 @@ GKE_PoC/
 │   │   └── tfvars/
 │   │       └── orel/
 │   │           └── dev.tfvars       # orel dev configuration
-│   └── compute/                     # Layer 3
-│       ├── main.tf                  # Module calls with for_each
+│   ├── compute/                     # Layer 3
+│   │   ├── main.tf                  # Module calls with for_each
+│   │   ├── variables.tf
+│   │   ├── outputs.tf
+│   │   ├── locals.tf
+│   │   ├── data.tf                  # terraform_remote_state from networking
+│   │   ├── providers.tf
+│   │   ├── backend.tf               # Dynamic - no hardcoded prefix
+│   │   ├── versions.tf
+│   │   └── tfvars/
+│   │       └── orel/
+│   │           └── dev.tfvars       # orel dev configuration
+│   └── automation/                  # Layer 4
+│       ├── main.tf                  # WIF pools, service accounts, IAM bindings
 │       ├── variables.tf
 │       ├── outputs.tf
 │       ├── locals.tf
-│       ├── data.tf                  # terraform_remote_state from networking
+│       ├── data.tf                  # Independent (no remote_state)
 │       ├── providers.tf
 │       ├── backend.tf               # Dynamic - no hardcoded prefix
 │       ├── versions.tf
@@ -101,7 +113,12 @@ GKE_PoC/
 │   ├── cloud_sql/                   # google_sql_database_instance + google_sql_database
 │   ├── service_account/             # google_service_account + google_project_iam_member
 │   ├── gke_cluster/                 # google_container_cluster
-│   └── gke_node_pool/               # google_container_node_pool
+│   ├── gke_node_pool/               # google_container_node_pool
+│   └── wif_pool/                    # google_iam_workload_identity_pool + provider
+├── .github/
+│   └── workflows/
+│       ├── terraform-deploy.yml     # Deploy workflow (plan/apply with scope)
+│       └── terraform-destroy.yml    # Destroy workflow (reverse order with scope)
 └── docs/
     ├── plans/                       # Design docs
     ├── gcp-terraform-blueprint.md   # Full architecture blueprint
@@ -111,7 +128,7 @@ GKE_PoC/
 ## Tech Stack
 
 - Terraform >= 1.6 (currently v1.14.6 installed)
-- Google Provider >= 6.0 (currently v7.21.0)
+- Google Provider >= 6.0 (currently v7.22.0)
 - GCS Backend: bucket `terraform-states-gcs`
 - State key pattern: `{client}/{env}/{layer}` (set via `-backend-config`)
 
@@ -140,6 +157,12 @@ terraform -chdir=gob/compute validate
 terraform -chdir=gob/compute plan -var-file=tfvars/orel/dev.tfvars
 terraform -chdir=gob/compute apply -var-file=tfvars/orel/dev.tfvars
 
+# --- Automation Layer (one-time manual apply for WIF + CI/CD SA) ---
+terraform -chdir=gob/automation init -backend-config="prefix=orel/dev/automation"
+terraform -chdir=gob/automation validate
+terraform -chdir=gob/automation plan -var-file=tfvars/orel/dev.tfvars
+terraform -chdir=gob/automation apply -var-file=tfvars/orel/dev.tfvars
+
 # --- Destroy (reverse order!) ---
 terraform -chdir=gob/compute destroy -var-file=tfvars/orel/dev.tfvars
 terraform -chdir=gob/database destroy -var-file=tfvars/orel/dev.tfvars
@@ -155,6 +178,8 @@ terraform -chdir=gob/database init '-backend-config=prefix=orel/dev/database'
 terraform -chdir=gob/database plan '-var-file=tfvars/orel/dev.tfvars'
 terraform -chdir=gob/compute init '-backend-config=prefix=orel/dev/compute'
 terraform -chdir=gob/compute plan '-var-file=tfvars/orel/dev.tfvars'
+terraform -chdir=gob/automation init '-backend-config=prefix=orel/dev/automation'
+terraform -chdir=gob/automation plan '-var-file=tfvars/orel/dev.tfvars'
 ```
 
 ### Switch client/env (re-init)
@@ -163,6 +188,7 @@ terraform -chdir=gob/compute plan '-var-file=tfvars/orel/dev.tfvars'
 terraform -chdir=gob/networking init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/networking"
 terraform -chdir=gob/database init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/database"
 terraform -chdir=gob/compute init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/compute"
+terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/automation"
 ```
 
 ## Coding Conventions
@@ -179,10 +205,10 @@ terraform -chdir=gob/compute init -reconfigure -backend-config="prefix=OTHER_CLI
 
 1. **Bootstrap & Networking** - code ready, validated, NOT yet applied
 2. **Data Layer** - code ready, validated, NOT yet applied
-3. **Compute Layer** - CURRENT (code ready, validated, NOT yet applied)
-4. Identity & Ingress - Workload Identity and Regional ALB (NEGs)
-5. Application Deployment - Online Boutique + Cloud SQL Proxy sidecar
-6. CI/CD - GitHub Actions with Workload Identity Federation (WIF)
+3. **Compute Layer** - code ready, validated, NOT yet applied
+4. **Automation & CI/CD** - CURRENT (code ready, validated, NOT yet applied)
+5. Identity & Ingress - Workload Identity and Regional ALB (NEGs)
+6. Application Deployment - Online Boutique + Cloud SQL Proxy sidecar
 7. Monitoring & Polish - Cloud Monitoring, optimization, resilience testing
 
 ## Current Status
@@ -250,11 +276,45 @@ terraform -chdir=gob/compute init -reconfigure -backend-config="prefix=OTHER_CLI
 | API | container.googleapis.com |
 
 **What's next:**
-1. Apply networking first: `terraform -chdir=gob/networking apply -var-file=tfvars/orel/dev.tfvars`
-2. Then apply database: `terraform -chdir=gob/database apply -var-file=tfvars/orel/dev.tfvars`
-3. Then apply compute: `terraform -chdir=gob/compute apply -var-file=tfvars/orel/dev.tfvars`
+1. Apply automation (one-time): `terraform -chdir=gob/automation apply -var-file=tfvars/orel/dev.tfvars`
+2. Configure GitHub Secrets (WIF_PROVIDER, WIF_SERVICE_ACCOUNT, GCP_PROJECT_ID)
+3. Push to GitHub and use workflows to deploy all layers
 4. Verify in GCP Console (checklists below)
-5. Start Stage 4: Identity & Ingress
+5. Start Stage 5: Identity & Ingress
+
+### Stage 4: Automation & CI/CD - CODE READY, NOT APPLIED
+
+**What's done:**
+- 1 new per-resource module (wif_pool)
+- Layer code at `gob/automation/` with dynamic backend
+- Client config at `gob/automation/tfvars/orel/dev.tfvars`
+- `terraform validate` successful
+- GitHub Actions workflows: `terraform-deploy.yml`, `terraform-destroy.yml`
+- Design doc: `docs/plans/2026-03-04-automation-cicd-design.md`
+- Implementation plan: `docs/plans/2026-03-04-automation-cicd-implementation.md`
+
+**Automation resources (~9 total):**
+| Resource | Name |
+|----------|------|
+| WIF Pool | orel-gob-dev-euw1-wip-github |
+| WIF Provider | orel-gob-dev-euw1-wipp-github-actions |
+| CI/CD Service Account | orel-gob-dev-euw1-sa-cicd |
+| IAM Binding | roles/editor → GSA |
+| SA IAM Binding | roles/iam.workloadIdentityUser → GitHub principal |
+| APIs | iam, iamcredentials, sts, cloudresourcemanager |
+
+**GitHub Actions Workflows:**
+| Workflow | Trigger | Inputs | Job Order |
+|----------|---------|--------|-----------|
+| terraform-deploy.yml | workflow_dispatch | action (plan/apply), scope (all/networking/database/compute), client, env | networking → database → compute |
+| terraform-destroy.yml | workflow_dispatch | scope (all/networking/database/compute), client, env | compute → database → networking |
+
+**GitHub Secrets (after automation apply):**
+| Secret | Value |
+|--------|-------|
+| `GCP_PROJECT_ID` | `orel-bh-sandbox` |
+| `WIF_PROVIDER` | `terraform output wif_provider_names` |
+| `WIF_SERVICE_ACCOUNT` | `terraform output service_account_emails` |
 
 ### GCP Console Verification Checklist - Networking (after apply):
 1. **VPC Networks** - `orel-gob-dev-euw1-vpc-main` exists, Regional routing, no auto subnets
@@ -279,11 +339,26 @@ terraform -chdir=gob/compute init -reconfigure -backend-config="prefix=OTHER_CLI
 4. **Cluster > Nodes** — Pool `orel-gob-dev-euw1-gke-main-spot`, e2-medium, Spot, autoscaling 1-3, auto-repair, auto-upgrade
 5. **Master Authorized Networks** — configured (0.0.0.0/0 in dev)
 
+### GCP Console Verification Checklist - Automation (after apply):
+1. **IAM > Workload Identity Pools** - `orel-gob-dev-euw1-wip-github` exists with OIDC provider
+2. **WIF Provider** - Issuer: `https://token.actions.githubusercontent.com`, Attribute condition set
+3. **IAM > Service Accounts** - `orel-gob-dev-euw1-sa-cicd@orel-bh-sandbox.iam.gserviceaccount.com`
+4. **IAM > Permissions** - GSA has `roles/editor`
+5. **GitHub Actions** - Run deploy workflow with `plan` action to verify WIF auth works
+
+### GitHub Actions Verification Checklist (after secrets configured):
+1. **Deploy plan** - Run `terraform-deploy.yml` with action=plan, scope=all → all 3 layers plan successfully
+2. **Deploy apply** - Run `terraform-deploy.yml` with action=apply, scope=all → all layers created
+3. **Destroy** - Run `terraform-destroy.yml` with scope=all → all layers destroyed in reverse order
+4. **Scope test** - Run deploy with scope=networking → only networking job runs
+
 ## Design Documents
 
 - `docs/plans/2026-03-01-bootstrap-networking-design-v2.md` - Networking design (approved)
 - `docs/plans/2026-03-02-data-layer-design.md` - Data Layer design and implementation plan
 - `docs/plans/2026-03-02-compute-layer-design.md` - Compute Layer design document
 - `docs/plans/2026-03-02-compute-layer-implementation.md` - Compute Layer implementation plan
+- `docs/plans/2026-03-04-automation-cicd-design.md` - Automation & CI/CD design document
+- `docs/plans/2026-03-04-automation-cicd-implementation.md` - Automation & CI/CD implementation plan
 - `docs/gcp-terraform-blueprint.md` - Full architecture blueprint for client delivery
 - `docs/client-intake-questionnaire.md` - Architecture decision questionnaire
