@@ -1,0 +1,388 @@
+name: "Terraform"
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform action"
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+      layer_networking:
+        description: "Layer: Networking"
+        required: false
+        type: boolean
+        default: false
+      layer_database:
+        description: "Layer: Database"
+        required: false
+        type: boolean
+        default: false
+      layer_compute:
+        description: "Layer: Compute"
+        required: false
+        type: boolean
+        default: false
+      client:
+        description: "Client name"
+        required: true
+        default: "orel"
+        type: string
+      env_name:
+        description: "Environment (dev/staging/prod)"
+        required: true
+        default: "dev"
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TF_VAR_FILE: "tfvars/${{ inputs.client }}/${{ inputs.env_name }}.tfvars"
+  TF_VERSION: "1.14.6"
+
+jobs:
+  # ===========================================================================
+  # Resolve Dependencies & Build Execution Plan
+  # ===========================================================================
+  resolve:
+    name: "Resolve Layer Dependencies"
+    runs-on: ubuntu-latest
+    outputs:
+      run_networking: ${{ steps.resolve.outputs.run_networking }}
+      run_database: ${{ steps.resolve.outputs.run_database }}
+      run_compute: ${{ steps.resolve.outputs.run_compute }}
+      execution_order: ${{ steps.resolve.outputs.execution_order }}
+    steps:
+      - name: Resolve dependencies
+        id: resolve
+        run: |
+          echo "============================================="
+          echo "  INPUT SELECTION"
+          echo "============================================="
+          echo "  Action:     ${{ inputs.action }}"
+          echo "  Networking: ${{ inputs.layer_networking }}"
+          echo "  Database:   ${{ inputs.layer_database }}"
+          echo "  Compute:    ${{ inputs.layer_compute }}"
+          echo "============================================="
+          echo ""
+
+          # ---------------------------------------------------------------
+          # Dependency graph (apply / plan direction):
+          #   networking  → (none)
+          #   database    → networking
+          #   compute     → database → networking
+          #
+          # For destroy the execution order is reversed, but the dependency
+          # resolution is the same — if you destroy networking you must
+          # first destroy everything that depends on it.
+          # ---------------------------------------------------------------
+
+          NETWORKING="${{ inputs.layer_networking }}"
+          DATABASE="${{ inputs.layer_database }}"
+          COMPUTE="${{ inputs.layer_compute }}"
+
+          # If nothing was selected, fail early
+          if [[ "$NETWORKING" == "false" && "$DATABASE" == "false" && "$COMPUTE" == "false" ]]; then
+            echo "::error::No layers selected. Please select at least one layer."
+            exit 1
+          fi
+
+          AUTO_ADDS=""
+
+          if [[ "${{ inputs.action }}" == "destroy" ]]; then
+            # Destroy direction: if destroying a base layer, must also
+            # destroy layers that depend on it
+            if [[ "$NETWORKING" == "true" && "$DATABASE" == "false" ]]; then
+              DATABASE="true"
+              AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added DATABASE (depends on networking)\n"
+            fi
+            if [[ "$DATABASE" == "true" && "$COMPUTE" == "false" ]]; then
+              COMPUTE="true"
+              AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added COMPUTE (depends on database)\n"
+            fi
+          else
+            # Apply / Plan direction: if a layer needs a base layer, add it
+            if [[ "$COMPUTE" == "true" && "$DATABASE" == "false" ]]; then
+              DATABASE="true"
+              AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added DATABASE (required by compute)\n"
+            fi
+            if [[ "$DATABASE" == "true" && "$NETWORKING" == "false" ]]; then
+              NETWORKING="true"
+              AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added NETWORKING (required by database)\n"
+            fi
+          fi
+
+          # Build execution order string for display
+          if [[ "${{ inputs.action }}" == "destroy" ]]; then
+            ORDER=""
+            [[ "$COMPUTE" == "true" ]] && ORDER="${ORDER}compute → "
+            [[ "$DATABASE" == "true" ]] && ORDER="${ORDER}database → "
+            [[ "$NETWORKING" == "true" ]] && ORDER="${ORDER}networking → "
+            ORDER="${ORDER%% → }"
+          else
+            ORDER=""
+            [[ "$NETWORKING" == "true" ]] && ORDER="${ORDER}networking → "
+            [[ "$DATABASE" == "true" ]] && ORDER="${ORDER}database → "
+            [[ "$COMPUTE" == "true" ]] && ORDER="${ORDER}compute → "
+            ORDER="${ORDER%% → }"
+          fi
+
+          echo ""
+          echo "============================================="
+          echo "  DEPENDENCY RESOLUTION"
+          echo "============================================="
+          if [[ -n "$AUTO_ADDS" ]]; then
+            echo -e "$AUTO_ADDS"
+          else
+            echo "  ✅ No additional dependencies needed"
+          fi
+          echo ""
+          echo "============================================="
+          echo "  EXECUTION PLAN"
+          echo "============================================="
+          echo "  Action: ${{ inputs.action }}"
+          echo "  Order:  ${ORDER}"
+          echo ""
+          echo "  Networking: ${NETWORKING}"
+          echo "  Database:   ${DATABASE}"
+          echo "  Compute:    ${COMPUTE}"
+          echo "============================================="
+
+          echo "run_networking=${NETWORKING}" >> "$GITHUB_OUTPUT"
+          echo "run_database=${DATABASE}" >> "$GITHUB_OUTPUT"
+          echo "run_compute=${COMPUTE}" >> "$GITHUB_OUTPUT"
+          echo "execution_order=${ORDER}" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ## 🚀 Terraform Execution Plan
+
+          | Property | Value |
+          |----------|-------|
+          | **Action** | `${{ inputs.action }}` |
+          | **Client** | `${{ inputs.client }}` |
+          | **Environment** | `${{ inputs.env_name }}` |
+          | **Execution Order** | ${{ steps.resolve.outputs.execution_order }} |
+
+          ### Layers
+
+          | Layer | Status |
+          |-------|--------|
+          | Networking | ${{ steps.resolve.outputs.run_networking == 'true' && '✅ Selected' || '⏭️ Skipped' }} |
+          | Database | ${{ steps.resolve.outputs.run_database == 'true' && '✅ Selected' || '⏭️ Skipped' }} |
+          | Compute | ${{ steps.resolve.outputs.run_compute == 'true' && '✅ Selected' || '⏭️ Skipped' }} |
+          EOF
+
+  # ===========================================================================
+  # APPLY / PLAN DIRECTION: networking → database → compute
+  # ===========================================================================
+
+  # Layer 1: Networking
+  networking-apply:
+    name: "Networking (${{ inputs.action }})"
+    needs: [resolve]
+    if: |
+      needs.resolve.outputs.run_networking == 'true' &&
+      inputs.action != 'destroy'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform -chdir=gob/networking init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/networking"
+
+      - name: Terraform Plan
+        run: terraform -chdir=gob/networking plan -var-file=${{ env.TF_VAR_FILE }}
+
+      - name: Terraform Apply
+        if: inputs.action == 'apply'
+        run: terraform -chdir=gob/networking apply -auto-approve -var-file=${{ env.TF_VAR_FILE }}
+
+  # Layer 2: Database
+  database-apply:
+    name: "Database (${{ inputs.action }})"
+    needs: [resolve, networking-apply]
+    if: |
+      always() &&
+      needs.resolve.outputs.run_database == 'true' &&
+      inputs.action != 'destroy' &&
+      (needs.networking-apply.result == 'success' || needs.networking-apply.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform -chdir=gob/database init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/database"
+
+      - name: Terraform Plan
+        run: terraform -chdir=gob/database plan -var-file=${{ env.TF_VAR_FILE }}
+
+      - name: Terraform Apply
+        if: inputs.action == 'apply'
+        run: terraform -chdir=gob/database apply -auto-approve -var-file=${{ env.TF_VAR_FILE }}
+
+  # Layer 3: Compute
+  compute-apply:
+    name: "Compute (${{ inputs.action }})"
+    needs: [resolve, database-apply]
+    if: |
+      always() &&
+      needs.resolve.outputs.run_compute == 'true' &&
+      inputs.action != 'destroy' &&
+      (needs.database-apply.result == 'success' || needs.database-apply.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform -chdir=gob/compute init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/compute"
+
+      - name: Terraform Plan
+        run: terraform -chdir=gob/compute plan -var-file=${{ env.TF_VAR_FILE }}
+
+      - name: Terraform Apply
+        if: inputs.action == 'apply'
+        run: terraform -chdir=gob/compute apply -auto-approve -var-file=${{ env.TF_VAR_FILE }}
+
+  # ===========================================================================
+  # DESTROY DIRECTION: compute → database → networking
+  # ===========================================================================
+
+  # Layer 3: Compute (destroyed first)
+  compute-destroy:
+    name: "Compute (destroy)"
+    needs: [resolve]
+    if: |
+      needs.resolve.outputs.run_compute == 'true' &&
+      inputs.action == 'destroy'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform -chdir=gob/compute init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/compute"
+
+      - name: Terraform Destroy
+        run: terraform -chdir=gob/compute destroy -auto-approve -var-file=${{ env.TF_VAR_FILE }}
+
+  # Layer 2: Database (destroyed second)
+  database-destroy:
+    name: "Database (destroy)"
+    needs: [resolve, compute-destroy]
+    if: |
+      always() &&
+      needs.resolve.outputs.run_database == 'true' &&
+      inputs.action == 'destroy' &&
+      (needs.compute-destroy.result == 'success' || needs.compute-destroy.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform -chdir=gob/database init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/database"
+
+      - name: Terraform Destroy
+        run: terraform -chdir=gob/database destroy -auto-approve -var-file=${{ env.TF_VAR_FILE }}
+
+  # Layer 1: Networking (destroyed last)
+  networking-destroy:
+    name: "Networking (destroy)"
+    needs: [resolve, database-destroy]
+    if: |
+      always() &&
+      needs.resolve.outputs.run_networking == 'true' &&
+      inputs.action == 'destroy' &&
+      (needs.database-destroy.result == 'success' || needs.database-destroy.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform -chdir=gob/networking init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/networking"
+
+      - name: Terraform Destroy
+        run: terraform -chdir=gob/networking destroy -auto-approve -var-file=${{ env.TF_VAR_FILE }}

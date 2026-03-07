@@ -46,7 +46,7 @@ service_accounts = {
   "cicd" = {
     display_name = "CI/CD GitHub Actions"
     description  = "SA for GitHub Actions WIF-based deployment"
-    roles        = ["roles/editor"]
+    roles        = ["roles/editor", "roles/servicenetworking.networksAdmin", "roles/resourcemanager.projectIamAdmin"]
     wif_pool_key = "github"
     github_repo  = "BenHur99/GKE_PoC"
   }

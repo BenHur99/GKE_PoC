@@ -117,8 +117,7 @@ GKE_PoC/
 │   └── wif_pool/                    # google_iam_workload_identity_pool + provider
 ├── .github/
 │   └── workflows/
-│       ├── terraform-deploy.yml     # Deploy workflow (plan/apply with scope)
-│       └── terraform-destroy.yml    # Destroy workflow (reverse order with scope)
+│       └── terraform.yml            # Unified workflow (plan/apply/destroy with smart dependency resolution)
 └── docs/
     ├── plans/                       # Design docs
     ├── gcp-terraform-blueprint.md   # Full architecture blueprint
@@ -282,32 +281,39 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 4. Verify in GCP Console (checklists below)
 5. Start Stage 5: Identity & Ingress
 
-### Stage 4: Automation & CI/CD - CODE READY, NOT APPLIED
+### Stage 4: Automation & CI/CD - APPLIED
 
 **What's done:**
 - 1 new per-resource module (wif_pool)
 - Layer code at `gob/automation/` with dynamic backend
 - Client config at `gob/automation/tfvars/orel/dev.tfvars`
-- `terraform validate` successful
-- GitHub Actions workflows: `terraform-deploy.yml`, `terraform-destroy.yml`
+- `terraform validate` successful, `terraform apply` successful
+- Unified GitHub Actions workflow: `terraform.yml`
 - Design doc: `docs/plans/2026-03-04-automation-cicd-design.md`
 - Implementation plan: `docs/plans/2026-03-04-automation-cicd-implementation.md`
 
-**Automation resources (~9 total):**
+**Automation resources (~10 total):**
 | Resource | Name |
 |----------|------|
 | WIF Pool | orel-gob-dev-euw1-wip-github |
 | WIF Provider | orel-gob-dev-euw1-wipp-github-actions |
 | CI/CD Service Account | orel-gob-dev-euw1-sa-cicd |
 | IAM Binding | roles/editor → GSA |
+| IAM Binding | roles/servicenetworking.networksAdmin → GSA |
+| IAM Binding | roles/compute.networkAdmin → Service Networking Agent |
 | SA IAM Binding | roles/iam.workloadIdentityUser → GitHub principal |
 | APIs | iam, iamcredentials, sts, cloudresourcemanager |
 
-**GitHub Actions Workflows:**
-| Workflow | Trigger | Inputs | Job Order |
-|----------|---------|--------|-----------|
-| terraform-deploy.yml | workflow_dispatch | action (plan/apply), scope (all/networking/database/compute), client, env | networking → database → compute |
-| terraform-destroy.yml | workflow_dispatch | scope (all/networking/database/compute), client, env | compute → database → networking |
+**GitHub Actions Workflow (`terraform.yml`):**
+| Feature | Details |
+|---------|----------|
+| Trigger | workflow_dispatch |
+| Actions | plan, apply, destroy |
+| Layer Selection | Boolean checkboxes per layer (networking, database, compute) |
+| Dependency Resolution | Auto-adds required/dependent layers with visible warnings |
+| Fail-Fast | If a layer fails, subsequent layers are skipped |
+| Apply Order | networking → database → compute |
+| Destroy Order | compute → database → networking |
 
 **GitHub Secrets (after automation apply):**
 | Secret | Value |
@@ -343,14 +349,16 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 1. **IAM > Workload Identity Pools** - `orel-gob-dev-euw1-wip-github` exists with OIDC provider
 2. **WIF Provider** - Issuer: `https://token.actions.githubusercontent.com`, Attribute condition set
 3. **IAM > Service Accounts** - `orel-gob-dev-euw1-sa-cicd@orel-bh-sandbox.iam.gserviceaccount.com`
-4. **IAM > Permissions** - GSA has `roles/editor`
-5. **GitHub Actions** - Run deploy workflow with `plan` action to verify WIF auth works
+4. **IAM > Permissions** - GSA has `roles/editor` and `roles/servicenetworking.networksAdmin`
+5. **GitHub Actions** - Run workflow with `plan` action to verify WIF auth works
 
 ### GitHub Actions Verification Checklist (after secrets configured):
-1. **Deploy plan** - Run `terraform-deploy.yml` with action=plan, scope=all → all 3 layers plan successfully
-2. **Deploy apply** - Run `terraform-deploy.yml` with action=apply, scope=all → all layers created
-3. **Destroy** - Run `terraform-destroy.yml` with scope=all → all layers destroyed in reverse order
-4. **Scope test** - Run deploy with scope=networking → only networking job runs
+1. **Plan all** - Run `terraform.yml` with action=plan, all layers checked → all 3 layers plan successfully
+2. **Apply all** - Run `terraform.yml` with action=apply, all layers checked → all layers created
+3. **Destroy all** - Run `terraform.yml` with action=destroy, all layers checked → all layers destroyed in reverse order
+4. **Single layer test** - Run with only compute checked → resolve job auto-adds database + networking
+5. **Fail-fast test** - If networking fails, database and compute are skipped
+6. **Dependency visibility** - Check resolve job logs and Step Summary for auto-added layers
 
 ## Design Documents
 
@@ -359,6 +367,4 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 - `docs/plans/2026-03-02-compute-layer-design.md` - Compute Layer design document
 - `docs/plans/2026-03-02-compute-layer-implementation.md` - Compute Layer implementation plan
 - `docs/plans/2026-03-04-automation-cicd-design.md` - Automation & CI/CD design document
-- `docs/plans/2026-03-04-automation-cicd-implementation.md` - Automation & CI/CD implementation plan
-- `docs/gcp-terraform-blueprint.md` - Full architecture blueprint for client delivery
-- `docs/client-intake-questionnaire.md` - Architecture decision questionnaire
+- `docs/plans/2026-03-04-automation-cicd-implementation.md` - Automation & 
