@@ -12,4 +12,5 @@ resource "google_service_networking_connection" "this" {
   network                 = var.network_id
   service                 = "servicenetworking.googleapis.com"
   reserved_peering_ranges = [google_compute_global_address.this.name]
+  deletion_policy         = "ABANDON" # Added to prevent Error code 9 during destroy
 }
