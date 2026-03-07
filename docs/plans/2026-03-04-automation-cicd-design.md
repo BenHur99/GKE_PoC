@@ -19,8 +19,8 @@ After this stage, the only manual Terraform operation is the one-time apply of t
 | WIF module | `modules/wif_pool/` (Pool+Provider pair) | Consistent with per-resource module pattern (like cloud_nat) |
 | CI/CD SA | Reuse `modules/service_account/` | Module already exists, handles GSA + IAM roles |
 | SA-to-WIF binding | In layer (`gob/automation/main.tf`) | Binding is orchestration, not module responsibility |
-| IAM roles | `roles/editor` for PoC | Fast iteration; production roles documented below |
-| Workflow structure | Two workflows (deploy + destroy) | `needs` in GHA are static; deploy/destroy have opposite ordering |
+| IAM roles | `roles/editor` + `roles/servicenetworking.networksAdmin` | Fast iteration + PSA requirements |
+| Workflow structure | Single workflow (`terraform.yml`) | Dynamic dependencies via a resolve job, opposite ordering for deploy vs destroy |
 | Trigger | `workflow_dispatch` only | Manual control, matches ephemeral infra pattern |
 | Artifact Registry | Deferred to Stage 5 | YAGNI - not needed until App Deployment |
 | Action pinning | SHA-pinned (not tag) | Supply-chain security best practice |
@@ -141,66 +141,65 @@ service_accounts = {
   cicd = {
     display_name = "CI/CD GitHub Actions"
     description  = "SA for GitHub Actions WIF-based deployment"
-    roles        = ["roles/editor"]
+    roles        = ["roles/editor", "roles/servicenetworking.networksAdmin"]
     wif_pool_key = "github"
     github_repo  = "BenHur99/GKE_PoC"
   }
 }
 ```
 
-## GitHub Actions Workflows
+## GitHub Actions Workflow (`terraform.yml`)
 
-### `terraform-deploy.yml`
+### Unified Pipeline Design
+
+Instead of separate deploy/destroy workflows, we use a single `terraform.yml` with smart dependency resolution.
 
 **Trigger:** `workflow_dispatch`
 
 **Inputs:**
 | Input | Type | Options | Default |
 |-------|------|---------|---------|
-| `action` | choice | plan, apply | plan |
-| `scope` | choice | all, networking, database, compute | all |
+| `action` | choice | plan, apply, destroy | plan |
+| `layer_networking` | boolean | true/false | false |
+| `layer_database`   | boolean | true/false | false |
+| `layer_compute`    | boolean | true/false | false |
 | `client` | string | - | orel |
 | `environment` | string | - | dev |
 
-**Jobs (sequential order):**
+### Smart Dependency Resolution (`resolve` Job)
 
+Since GHA `needs` are static and users might select only partial layers (e.g., just `compute`), a dedicated first job resolves dependencies:
+
+1. Takes Boolean inputs for each layer.
+2. Checks action type (`apply/plan` vs `destroy`).
+3. Auto-adds dependencies:
+   - For `apply`/`plan`: If `compute` is checked, adds `database` and `networking`.
+   - For `destroy`: If `networking` is checked, adds `database` and `compute` (reverse dependency).
+4. Outputs boolean flags indicating which layers must actually run.
+
+### Jobs (Execution Flow)
+
+**Apply / Plan Sequence:**
 ```
-networking → database → compute
+networking-apply → database-apply → compute-apply
 ```
+Each job checks `if: needs.resolve.outputs.run_<layer> == 'true' && inputs.action != 'destroy'`.
 
-Each job:
-1. Runs only if layer is in scope (`if` condition)
-2. Checks out code (SHA-pinned action)
-3. Authenticates via WIF (SHA-pinned `google-github-actions/auth`)
-4. Sets up Terraform (SHA-pinned `hashicorp/setup-terraform`)
-5. `terraform init -backend-config="prefix=$client/$env/$layer"`
-6. `terraform plan -var-file=tfvars/$client/$env.tfvars`
-7. If action=apply: `terraform apply -auto-approve -var-file=tfvars/$client/$env.tfvars`
+**Destroy Sequence:**
+```
+compute-destroy → database-destroy → networking-destroy
+```
+Each job checks `if: needs.resolve.outputs.run_<layer> == 'true' && inputs.action == 'destroy'`.
 
-**`needs` + `if` pattern:**
+### Fail-Fast Behavior
+To prevent cascading failures across layers, each dependent layer validates that its predecessor succeeded:
 ```yaml
-database:
-  needs: [networking]
-  if: |
-    always() &&
-    contains(fromJSON('["all","database"]'), inputs.scope) &&
-    (needs.networking.result == 'success' || needs.networking.result == 'skipped')
+if: |
+  always() &&
+  needs.resolve.outputs.run_database == 'true' &&
+  inputs.action != 'destroy' &&
+  (needs.networking-apply.result == 'success' || needs.networking-apply.result == 'skipped')
 ```
-
-### `terraform-destroy.yml`
-
-**Trigger:** `workflow_dispatch`
-
-**Inputs:** Same as deploy (without `action` - always destroy)
-
-**Jobs (reverse order):**
-```
-compute → database → networking
-```
-
-Same pattern, reversed `needs` chain.
-
-### Dynamic Backend Solution
 
 The pipeline constructs the state prefix from workflow inputs:
 
@@ -279,8 +278,7 @@ GKE_PoC/
 │   └── wif_pool/            # NEW
 ├── .github/
 │   └── workflows/
-│       ├── terraform-deploy.yml   # NEW
-│       └── terraform-destroy.yml  # NEW
+│       └── terraform.yml          # Unified CI/CD config
 └── docs/
     └── plans/
         └── 2026-03-04-automation-cicd-design.md  # THIS DOC
