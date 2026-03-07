@@ -51,6 +51,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
+      - name: Debug secrets
+        run: |
+          echo "WIF_PROVIDER is set: ${{ secrets.WIF_PROVIDER != '' }}"
+          echo "SERVICE_ACCOUNT is set: ${{ secrets.SERVICE_ACCOUNT != '' }}"
+          echo "GitHub environment: ${{ inputs.client }}-${{ inputs.env_name }}"
+
       - name: Authenticate to GCP
         uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
         with:
