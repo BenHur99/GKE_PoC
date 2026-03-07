@@ -45,6 +45,16 @@ module "service_accounts" {
 }
 
 # =============================================================================
+# Service Networking Agent - required for PSA peering in networking layer
+# =============================================================================
+
+resource "google_project_iam_member" "servicenetworking_agent" {
+  project = var.project_id
+  role    = "roles/compute.networkAdmin"
+  member  = "serviceAccount:service-${data.google_project.this.number}@service-networking.iam.gserviceaccount.com"
+}
+
+# =============================================================================
 # WIF → Service Account Bindings (allow GitHub to impersonate GSA)
 # =============================================================================
 
