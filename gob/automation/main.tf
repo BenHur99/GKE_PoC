@@ -21,7 +21,7 @@ module "wif_pools" {
   name                = "${local.naming_prefix}-wip-${each.key}"
   project_id          = var.project_id
   display_name        = each.value.display_name
-  provider_id         = "${local.naming_prefix}-wipp-${each.value.provider_id}"
+  provider_id         = each.value.provider_id
   issuer_uri          = each.value.issuer_uri
   attribute_mapping   = each.value.attribute_mapping
   attribute_condition = each.value.attribute_condition

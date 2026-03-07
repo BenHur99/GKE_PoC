@@ -26,7 +26,7 @@ apis = [
 wif_pools = {
   "github" = {
     display_name = "GitHub Actions Pool"
-    provider_id  = "github-actions"
+    provider_id  = "orel-gob-dev-euw1-gha"
     issuer_uri   = "https://token.actions.githubusercontent.com"
     attribute_condition = "assertion.repository_owner == \"BenHur99\""
     attribute_mapping = {
