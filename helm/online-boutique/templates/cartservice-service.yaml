@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cartservice
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: cartservice
+    {{- include "online-boutique.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app: cartservice
+  ports:
+    - port: {{ .Values.cartservice.port }}
+      targetPort: {{ .Values.cartservice.port }}
+      protocol: TCP
+      name: grpc

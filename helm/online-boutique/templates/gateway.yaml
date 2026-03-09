@@ -1,0 +1,20 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: frontend
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "online-boutique.labels" . | nindent 4 }}
+spec:
+  gatewayClassName: {{ .Values.gateway.className }}
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+  {{- if .Values.gateway.staticIpName }}
+  addresses:
+    - type: NamedAddress
+      value: {{ .Values.gateway.staticIpName }}
+  {{- end }}
+{{- end }}

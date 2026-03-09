@@ -31,6 +31,11 @@ on:
         required: false
         type: boolean
         default: false
+      deploy_app:
+        description: "Deploy: Online Boutique (Helm)"
+        required: false
+        type: boolean
+        default: false
       client:
         description: "Client name"
         required: true
@@ -62,6 +67,7 @@ jobs:
       run_database: ${{ steps.resolve.outputs.run_database }}
       run_compute: ${{ steps.resolve.outputs.run_compute }}
       run_identity: ${{ steps.resolve.outputs.run_identity }}
+      run_deploy_app: ${{ steps.resolve.outputs.run_deploy_app }}
       execution_order: ${{ steps.resolve.outputs.execution_order }}
     steps:
       - name: Resolve dependencies
@@ -134,9 +140,38 @@ jobs:
             fi
           fi
 
+          DEPLOY_APP="${{ inputs.deploy_app }}"
+
+          # deploy-app requires identity (for WI) + compute (for GKE) + networking (for IP)
+          if [[ "${{ inputs.action }}" != "destroy" && "$DEPLOY_APP" == "true" ]]; then
+            if [[ "$IDENTITY" == "false" ]]; then
+              IDENTITY="true"
+              AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added IDENTITY (required by deploy-app)\n"
+            fi
+            if [[ "$COMPUTE" == "false" ]]; then
+              COMPUTE="true"
+              AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added COMPUTE (required by deploy-app)\n"
+            fi
+          fi
+
+          # Re-run base dependency resolution after deploy-app additions
+          if [[ "$IDENTITY" == "true" && "$DATABASE" == "false" ]]; then
+            DATABASE="true"
+            AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added DATABASE (required by identity)\n"
+          fi
+          if [[ "$COMPUTE" == "true" && "$DATABASE" == "false" ]]; then
+            DATABASE="true"
+            AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added DATABASE (required by compute)\n"
+          fi
+          if [[ "$DATABASE" == "true" && "$NETWORKING" == "false" ]]; then
+            NETWORKING="true"
+            AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added NETWORKING (required by database)\n"
+          fi
+
           # Build execution order string for display
           if [[ "${{ inputs.action }}" == "destroy" ]]; then
             ORDER=""
+            [[ "$DEPLOY_APP" == "true" ]] && ORDER="${ORDER}destroy-app → "
             [[ "$IDENTITY" == "true" ]] && ORDER="${ORDER}identity → "
             [[ "$COMPUTE" == "true" ]] && ORDER="${ORDER}compute → "
             [[ "$DATABASE" == "true" ]] && ORDER="${ORDER}database → "
@@ -148,6 +183,7 @@ jobs:
             [[ "$DATABASE" == "true" ]] && ORDER="${ORDER}database → "
             [[ "$COMPUTE" == "true" ]] && ORDER="${ORDER}compute → "
             [[ "$IDENTITY" == "true" ]] && ORDER="${ORDER}identity → "
+            [[ "$DEPLOY_APP" == "true" ]] && ORDER="${ORDER}deploy-app → "
             ORDER="${ORDER%% → }"
           fi
 
@@ -177,6 +213,7 @@ jobs:
           echo "run_database=${DATABASE}" >> "$GITHUB_OUTPUT"
           echo "run_compute=${COMPUTE}" >> "$GITHUB_OUTPUT"
           echo "run_identity=${IDENTITY}" >> "$GITHUB_OUTPUT"
+          echo "run_deploy_app=${DEPLOY_APP}" >> "$GITHUB_OUTPUT"
           echo "execution_order=${ORDER}" >> "$GITHUB_OUTPUT"
 
       - name: Summary
@@ -199,6 +236,7 @@ jobs:
           | Database | ${{ steps.resolve.outputs.run_database == 'true' && '✅ Selected' || '⏭️ Skipped' }} |
           | Compute | ${{ steps.resolve.outputs.run_compute == 'true' && '✅ Selected' || '⏭️ Skipped' }} |
           | Identity | ${{ steps.resolve.outputs.run_identity == 'true' && '✅ Selected' || '⏭️ Skipped' }} |
+          | Deploy App | ${{ steps.resolve.outputs.run_deploy_app == 'true' && '✅ Selected' || '⏭️ Skipped' }} |
           EOF
 
   # ===========================================================================
@@ -347,17 +385,157 @@ jobs:
         if: inputs.action == 'apply'
         run: terraform -chdir=gob/identity apply -auto-approve -var-file=${{ env.TF_VAR_FILE }}
 
+  # ==========================================================================
+  # APPLICATION DEPLOYMENT (after all Terraform layers)
+  # ==========================================================================
+
+  deploy-app:
+    name: "Deploy Online Boutique (Helm)"
+    needs: [resolve, identity-apply, compute-apply]
+    if: |
+      always() &&
+      needs.resolve.outputs.run_deploy_app == 'true' &&
+      inputs.action == 'apply' &&
+      (needs.identity-apply.result == 'success' || needs.identity-apply.result == 'skipped') &&
+      (needs.compute-apply.result == 'success' || needs.compute-apply.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Install gke-gcloud-auth-plugin
+        run: |
+          gcloud components install gke-gcloud-auth-plugin --quiet 2>/dev/null || true
+
+      - name: Get GKE Credentials
+        run: |
+          CLUSTER_NAME=$(cd gob/compute && terraform init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/compute" > /dev/null 2>&1 && terraform output -json cluster_names | jq -r '.main')
+          gcloud container clusters get-credentials "$CLUSTER_NAME" \
+            --zone europe-west1-b \
+            --project ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Read Terraform Outputs
+        id: tf-outputs
+        run: |
+          # Init networking to read static IP name
+          terraform -chdir=gob/networking init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/networking" > /dev/null 2>&1
+          STATIC_IP_NAME=$(terraform -chdir=gob/networking output -json static_ip_names | jq -r '.ingress')
+
+          # Init database to read SQL connection and GSA email
+          terraform -chdir=gob/database init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/database" > /dev/null 2>&1
+          SQL_CONNECTION=$(terraform -chdir=gob/database output -json sql_connection_names | jq -r '.main')
+          GSA_EMAIL=$(terraform -chdir=gob/database output -json service_account_emails | jq -r '."btq-sql"')
+
+          echo "static_ip_name=${STATIC_IP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "sql_connection=${SQL_CONNECTION}" >> "$GITHUB_OUTPUT"
+          echo "gsa_email=${GSA_EMAIL}" >> "$GITHUB_OUTPUT"
+
+          echo "Static IP Name: ${STATIC_IP_NAME}"
+          echo "SQL Connection: ${SQL_CONNECTION}"
+          echo "GSA Email: ${GSA_EMAIL}"
+
+      - name: Install Helm
+        uses: azure/setup-helm@fe7b79cd5ee1e45176fcad797de68ecaf3ca4814 # v4.2.0
+        with:
+          version: v3.14.0
+
+      - name: Helm Deploy
+        run: |
+          helm upgrade --install online-boutique ./helm/online-boutique \
+            --namespace boutique \
+            --create-namespace \
+            --set gateway.staticIpName=${{ steps.tf-outputs.outputs.static_ip_name }} \
+            --set sqlProxy.instanceConnectionName=${{ steps.tf-outputs.outputs.sql_connection }} \
+            --set serviceAccount.gsaEmail=${{ steps.tf-outputs.outputs.gsa_email }} \
+            --wait \
+            --timeout 5m
+
+      - name: Verify Deployment
+        run: |
+          echo "=== Pods ==="
+          kubectl get pods -n boutique
+          echo ""
+          echo "=== Services ==="
+          kubectl get svc -n boutique
+          echo ""
+          echo "=== Gateway ==="
+          kubectl get gateway -n boutique
+          echo ""
+          echo "=== HTTPRoute ==="
+          kubectl get httproute -n boutique
+
   # ===========================================================================
   # DESTROY DIRECTION: identity → compute → database → networking
   # ===========================================================================
 
-  # Layer 4: Identity (destroyed first)
-  identity-destroy:
-    name: "Identity (destroy)"
+  # Application must be uninstalled before identity destroy (WI binding removal)
+  destroy-app:
+    name: "Destroy Online Boutique (Helm)"
     needs: [resolve]
     if: |
-      needs.resolve.outputs.run_identity == 'true' &&
+      needs.resolve.outputs.run_deploy_app == 'true' &&
       inputs.action == 'destroy'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Install gke-gcloud-auth-plugin
+        run: |
+          gcloud components install gke-gcloud-auth-plugin --quiet 2>/dev/null || true
+
+      - name: Get GKE Credentials
+        run: |
+          CLUSTER_NAME=$(cd gob/compute && terraform init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/compute" > /dev/null 2>&1 && terraform output -json cluster_names | jq -r '.main')
+          gcloud container clusters get-credentials "$CLUSTER_NAME" \
+            --zone europe-west1-b \
+            --project ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@fe7b79cd5ee1e45176fcad797de68ecaf3ca4814 # v4.2.0
+        with:
+          version: v3.14.0
+
+      - name: Helm Uninstall
+        run: |
+          helm uninstall online-boutique --namespace boutique --wait --timeout 3m || true
+          kubectl delete namespace boutique --timeout=60s || true
+
+  # Layer 4: Identity (destroyed after app uninstall)
+  identity-destroy:
+    name: "Identity (destroy)"
+    needs: [resolve, destroy-app]
+    if: |
+      always() &&
+      needs.resolve.outputs.run_identity == 'true' &&
+      inputs.action == 'destroy' &&
+      (needs.destroy-app.result == 'success' || needs.destroy-app.result == 'skipped')
     runs-on: ubuntu-latest
     environment: ${{ inputs.client }}-${{ inputs.env_name }}
     steps:

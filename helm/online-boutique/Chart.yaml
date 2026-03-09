@@ -1,0 +1,6 @@
+apiVersion: v2
+name: online-boutique
+description: Reduced Online Boutique deployment for GKE PoC (frontend + cartservice + redis)
+type: application
+version: 0.1.0
+appVersion: "v0.10.4"

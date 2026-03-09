@@ -129,9 +129,15 @@ GKE_PoC/
 │   ├── wif_pool/                    # google_iam_workload_identity_pool + provider
 │   ├── static_ip/                   # google_compute_address
 │   └── wi_binding/                  # google_service_account_iam_member (KSA↔GSA)
+├── helm/
+│   └── online-boutique/             # Custom Helm chart for app deployment
+│       ├── Chart.yaml
+│       ├── values.yaml              # Default values
+│       ├── values-orel-dev.yaml     # Client/env overrides
+│       └── templates/               # K8s manifests (11 resources)
 ├── .github/
 │   └── workflows/
-│       └── terraform.yml            # Unified workflow (plan/apply/destroy with smart dependency resolution)
+│       └── terraform.yml            # Unified workflow (plan/apply/destroy/deploy with smart dependency resolution)
 └── docs/
     ├── plans/                       # Design docs
 ```
@@ -228,8 +234,8 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 2. **Data Layer** - code ready, validated, NOT yet applied
 3. **Compute Layer** - code ready, validated, NOT yet applied
 4. **Automation & CI/CD** - APPLIED
-5. **Identity & Ingress** - CURRENT (code ready, validated, NOT yet applied)
-6. Application Deployment - Online Boutique + Cloud SQL Proxy sidecar
+5. **Identity & Ingress** - code ready, validated, NOT yet applied
+6. **Application Deployment** - CURRENT (code ready, NOT yet applied)
 7. Monitoring & Polish - Cloud Monitoring, optimization, resilience testing
 
 ## Current Status
@@ -366,6 +372,32 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 |----------|------|
 | Static IP | orel-gob-dev-euw1-ip-ingress (Regional External, STANDARD tier) |
 
+### Stage 6: Application Deployment - CODE READY, NOT APPLIED
+
+**What's done:**
+- Custom Helm chart at `helm/online-boutique/`
+- Frontend + CartService + Redis deployments
+- Cloud SQL Auth Proxy sidecar on cartservice (WI demo)
+- Gateway API (gke-l7-regional-external-managed) with Static IP
+- HealthCheckPolicy for frontend health checks
+- Workflow updated with deploy-app/destroy-app jobs
+- Design doc: `docs/plans/2026-03-09-app-deployment-design.md`
+
+**Application resources (11 K8s resources):**
+| Resource | Name |
+|----------|------|
+| Namespace | boutique |
+| KSA | boutique-sql-proxy (WI → GSA btq-sql) |
+| Deployment | frontend (1 replica, port 8080) |
+| Service | frontend (ClusterIP:80, NEG annotation) |
+| Deployment | cartservice (1 replica + SQL Proxy sidecar) |
+| Service | cartservice (ClusterIP:7070) |
+| Deployment | redis-cart (1 replica, port 6379) |
+| Service | redis-cart (ClusterIP:6379) |
+| Gateway | frontend (gke-l7-regional-external-managed, Static IP) |
+| HTTPRoute | frontend (→ frontend:80) |
+| HealthCheckPolicy | frontend (HTTP /_healthz:8080) |
+
 ### GCP Console Verification Checklist - Networking (after apply):
 1. **VPC Networks** - `orel-gob-dev-euw1-vpc-main` exists, Regional routing, no auto subnets
 2. **Subnets** - GKE subnet with secondary ranges, proxy subnet with REGIONAL_MANAGED_PROXY
@@ -417,3 +449,5 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 - `docs/plans/2026-03-04-automation-cicd-design.md` - Automation & CI/CD design document
 - `docs/plans/2026-03-04-automation-cicd-implementation.md` - Automation & CI/CD implementation plan
 - `docs/plans/2026-03-08-identity-ingress-design.md` - Identity & Ingress design document
+- `docs/plans/2026-03-09-app-deployment-design.md` - Application Deployment design document
+- `docs/plans/2026-03-09-app-deployment-implementation.md` - Application Deployment implementation plan

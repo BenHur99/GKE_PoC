@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cartservice
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: cartservice
+    {{- include "online-boutique.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.cartservice.replicas }}
+  selector:
+    matchLabels:
+      app: cartservice
+  template:
+    metadata:
+      labels:
+        app: cartservice
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      terminationGracePeriodSeconds: 5
+      containers:
+        # --- Main container: cartservice (talks to Redis) ---
+        - name: cartservice
+          image: "{{ .Values.images.cartservice.repository }}:{{ .Values.images.cartservice.tag }}"
+          ports:
+            - containerPort: {{ .Values.cartservice.port }}
+          env:
+            - name: REDIS_ADDR
+              value: "redis-cart:{{ .Values.redis.port }}"
+          readinessProbe:
+            grpc:
+              port: {{ .Values.cartservice.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            grpc:
+              port: {{ .Values.cartservice.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: {{ .Values.cartservice.resources.requests.cpu }}
+              memory: {{ .Values.cartservice.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.cartservice.resources.limits.cpu }}
+              memory: {{ .Values.cartservice.resources.limits.memory }}
+        {{- if .Values.sqlProxy.enabled }}
+        # --- Sidecar: Cloud SQL Auth Proxy (WI demo) ---
+        # Authenticates via Workload Identity: KSA → GSA → Cloud SQL
+        # Does NOT serve cartservice traffic — demonstrates E2E WI chain
+        - name: cloud-sql-proxy
+          image: "{{ .Values.images.sqlProxy.repository }}:{{ .Values.images.sqlProxy.tag }}"
+          args:
+            - "--structured-logs"
+            - "--port={{ .Values.sqlProxy.port }}"
+            - "{{ .Values.sqlProxy.instanceConnectionName }}"
+          ports:
+            - containerPort: {{ .Values.sqlProxy.port }}
+              protocol: TCP
+          resources:
+            requests:
+              cpu: {{ .Values.sqlProxy.resources.requests.cpu }}
+              memory: {{ .Values.sqlProxy.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.sqlProxy.resources.limits.cpu }}
+              memory: {{ .Values.sqlProxy.resources.limits.memory }}
+          securityContext:
+            runAsNonRoot: true
+        {{- end }}

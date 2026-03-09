@@ -1,0 +1,86 @@
+namespace: boutique
+
+# --- Images ---
+images:
+  frontend:
+    repository: us-central1-docker.pkg.dev/google-samples/microservices-demo/frontend
+    tag: v0.10.4
+  cartservice:
+    repository: us-central1-docker.pkg.dev/google-samples/microservices-demo/cartservice
+    tag: v0.10.4
+  redis:
+    repository: redis
+    tag: alpine
+  sqlProxy:
+    repository: gcr.io/cloud-sql-connectors/cloud-sql-proxy
+    tag: "2"
+
+# --- Service Account (KSA with WI annotation) ---
+serviceAccount:
+  name: boutique-sql-proxy
+  gsaEmail: ""  # Override per-env: orel-gob-dev-euw1-sa-btq-sql@...
+
+# --- Frontend ---
+frontend:
+  replicas: 1
+  port: 8080
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# --- Cart Service ---
+cartservice:
+  replicas: 1
+  port: 7070
+  resources:
+    requests:
+      cpu: 200m
+      memory: 64Mi
+    limits:
+      cpu: 300m
+      memory: 128Mi
+
+# --- Cloud SQL Auth Proxy (sidecar on cartservice) ---
+sqlProxy:
+  enabled: true
+  instanceConnectionName: ""  # Override per-env: project:region:instance
+  port: 5432
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+# --- Redis ---
+redis:
+  replicas: 1
+  port: 6379
+  resources:
+    requests:
+      cpu: 70m
+      memory: 100Mi
+    limits:
+      cpu: 125m
+      memory: 128Mi
+
+# --- Gateway (replaces Ingress) ---
+gateway:
+  enabled: true
+  className: gke-l7-regional-external-managed
+  staticIpName: ""  # Override per-env: orel-gob-dev-euw1-ip-ingress
+
+# --- Health Check Policy ---
+healthCheckPolicy:
+  enabled: true
+  path: /_healthz
+  port: 8080
+  intervalSec: 15
+  timeoutSec: 5
+  healthyThreshold: 2
+  unhealthyThreshold: 3

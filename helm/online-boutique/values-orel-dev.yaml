@@ -1,0 +1,3 @@
+# Overrides for orel/dev — values injected from Terraform outputs at deploy time.
+# The gateway.staticIpName, sqlProxy.instanceConnectionName, and serviceAccount.gsaEmail
+# are passed via --set flags from the CI/CD workflow.
