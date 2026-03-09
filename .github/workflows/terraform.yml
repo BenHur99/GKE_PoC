@@ -110,20 +110,9 @@ jobs:
           AUTO_ADDS=""
 
           if [[ "${{ inputs.action }}" == "destroy" ]]; then
-            # Destroy direction: if destroying a base layer, must also
-            # destroy layers that depend on it
-            if [[ "$NETWORKING" == "true" && "$DATABASE" == "false" ]]; then
-              DATABASE="true"
-              AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added DATABASE (depends on networking)\n"
-            fi
-            if [[ "$DATABASE" == "true" && "$COMPUTE" == "false" ]]; then
-              COMPUTE="true"
-              AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added COMPUTE (depends on database)\n"
-            fi
-            if [[ "$DATABASE" == "true" && "$IDENTITY" == "false" ]]; then
-              IDENTITY="true"
-              AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added IDENTITY (depends on database)\n"
-            fi
+            # Destroy direction: user controls exactly which layers to destroy.
+            # No auto-adds — destroy only what was explicitly selected.
+            : # no-op
           else
             # Apply / Plan direction: if a layer needs a base layer, add it
             if [[ "$IDENTITY" == "true" && "$DATABASE" == "false" ]]; then
