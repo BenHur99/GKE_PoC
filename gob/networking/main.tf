@@ -99,3 +99,18 @@ module "psa_connections" {
 
   depends_on = [module.apis]
 }
+
+# =============================================================================
+# Static IP Addresses
+# =============================================================================
+
+module "static_ips" {
+  for_each = var.static_ips
+  source   = "../../modules/static_ip"
+
+  name         = "${local.naming_prefix}-ip-${each.key}"
+  project_id   = var.project_id
+  region       = var.region
+  address_type = each.value.address_type
+  network_tier = each.value.network_tier
+}

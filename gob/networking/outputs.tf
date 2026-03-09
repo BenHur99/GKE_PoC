@@ -61,6 +61,23 @@ output "psa_connection_ids" {
   value       = { for k, v in module.psa_connections : k => v.connection_id }
 }
 
+# --- Static IPs ---
+
+output "static_ip_addresses" {
+  description = "Map of IP key => reserved IP address"
+  value       = { for k, v in module.static_ips : k => v.address }
+}
+
+output "static_ip_self_links" {
+  description = "Map of IP key => self link"
+  value       = { for k, v in module.static_ips : k => v.self_link }
+}
+
+output "static_ip_names" {
+  description = "Map of IP key => IP resource name"
+  value       = { for k, v in module.static_ips : k => v.name }
+}
+
 # --- Naming ---
 
 output "naming_prefix" {

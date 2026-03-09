@@ -91,6 +91,18 @@ GKE_PoC/
 │   │   └── tfvars/
 │   │       └── orel/
 │   │           └── dev.tfvars       # orel dev configuration
+│   ├── identity/                    # Layer 5
+│   │   ├── main.tf                  # Workload Identity bindings (KSA → GSA)
+│   │   ├── variables.tf
+│   │   ├── outputs.tf
+│   │   ├── locals.tf
+│   │   ├── data.tf                  # terraform_remote_state from database
+│   │   ├── providers.tf
+│   │   ├── backend.tf               # Dynamic - no hardcoded prefix
+│   │   ├── versions.tf
+│   │   └── tfvars/
+│   │       └── orel/
+│   │           └── dev.tfvars       # orel dev configuration
 │   └── automation/                  # Layer 4
 │       ├── main.tf                  # WIF pools, service accounts, IAM bindings
 │       ├── variables.tf
@@ -114,14 +126,14 @@ GKE_PoC/
 │   ├── service_account/             # google_service_account + google_project_iam_member
 │   ├── gke_cluster/                 # google_container_cluster
 │   ├── gke_node_pool/               # google_container_node_pool
-│   └── wif_pool/                    # google_iam_workload_identity_pool + provider
+│   ├── wif_pool/                    # google_iam_workload_identity_pool + provider
+│   ├── static_ip/                   # google_compute_address
+│   └── wi_binding/                  # google_service_account_iam_member (KSA↔GSA)
 ├── .github/
 │   └── workflows/
 │       └── terraform.yml            # Unified workflow (plan/apply/destroy with smart dependency resolution)
 └── docs/
     ├── plans/                       # Design docs
-    ├── gcp-terraform-blueprint.md   # Full architecture blueprint
-    └── client-intake-questionnaire.md
 ```
 
 ## Tech Stack
@@ -156,6 +168,12 @@ terraform -chdir=gob/compute validate
 terraform -chdir=gob/compute plan -var-file=tfvars/orel/dev.tfvars
 terraform -chdir=gob/compute apply -var-file=tfvars/orel/dev.tfvars
 
+# --- Identity Layer (requires database to be applied first) ---
+terraform -chdir=gob/identity init -backend-config="prefix=orel/dev/identity"
+terraform -chdir=gob/identity validate
+terraform -chdir=gob/identity plan -var-file=tfvars/orel/dev.tfvars
+terraform -chdir=gob/identity apply -var-file=tfvars/orel/dev.tfvars
+
 # --- Automation Layer (one-time manual apply for WIF + CI/CD SA) ---
 terraform -chdir=gob/automation init -backend-config="prefix=orel/dev/automation"
 terraform -chdir=gob/automation validate
@@ -163,6 +181,7 @@ terraform -chdir=gob/automation plan -var-file=tfvars/orel/dev.tfvars
 terraform -chdir=gob/automation apply -var-file=tfvars/orel/dev.tfvars
 
 # --- Destroy (reverse order!) ---
+terraform -chdir=gob/identity destroy -var-file=tfvars/orel/dev.tfvars
 terraform -chdir=gob/compute destroy -var-file=tfvars/orel/dev.tfvars
 terraform -chdir=gob/database destroy -var-file=tfvars/orel/dev.tfvars
 terraform -chdir=gob/networking destroy -var-file=tfvars/orel/dev.tfvars
@@ -177,6 +196,8 @@ terraform -chdir=gob/database init '-backend-config=prefix=orel/dev/database'
 terraform -chdir=gob/database plan '-var-file=tfvars/orel/dev.tfvars'
 terraform -chdir=gob/compute init '-backend-config=prefix=orel/dev/compute'
 terraform -chdir=gob/compute plan '-var-file=tfvars/orel/dev.tfvars'
+terraform -chdir=gob/identity init '-backend-config=prefix=orel/dev/identity'
+terraform -chdir=gob/identity plan '-var-file=tfvars/orel/dev.tfvars'
 terraform -chdir=gob/automation init '-backend-config=prefix=orel/dev/automation'
 terraform -chdir=gob/automation plan '-var-file=tfvars/orel/dev.tfvars'
 ```
@@ -187,6 +208,7 @@ terraform -chdir=gob/automation plan '-var-file=tfvars/orel/dev.tfvars'
 terraform -chdir=gob/networking init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/networking"
 terraform -chdir=gob/database init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/database"
 terraform -chdir=gob/compute init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/compute"
+terraform -chdir=gob/identity init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/identity"
 terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/automation"
 ```
 
@@ -205,8 +227,8 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 1. **Bootstrap & Networking** - code ready, validated, NOT yet applied
 2. **Data Layer** - code ready, validated, NOT yet applied
 3. **Compute Layer** - code ready, validated, NOT yet applied
-4. **Automation & CI/CD** - CURRENT (code ready, validated, NOT yet applied)
-5. Identity & Ingress - Workload Identity and Regional ALB (NEGs)
+4. **Automation & CI/CD** - APPLIED
+5. **Identity & Ingress** - CURRENT (code ready, validated, NOT yet applied)
 6. Application Deployment - Online Boutique + Cloud SQL Proxy sidecar
 7. Monitoring & Polish - Cloud Monitoring, optimization, resilience testing
 
@@ -215,12 +237,12 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 ### Stage 1: Networking - CODE READY, NOT APPLIED
 
 **What's done:**
-- 6 per-resource modules (vpc, subnet, firewall_rule, cloud_nat, psa, project_api)
+- 7 per-resource modules (vpc, subnet, firewall_rule, cloud_nat, psa, project_api, static_ip)
 - Layer code at `gob/networking/` with dynamic backend
 - Client config at `gob/networking/tfvars/orel/dev.tfvars`
-- `terraform init` successful, `terraform validate` successful, `terraform plan` = 15 resources
+- `terraform init` successful, `terraform validate` successful, `terraform plan` = 16 resources
 
-**Networking resources (15 total):**
+**Networking resources (16 total):**
 | Resource | Name |
 |----------|------|
 | VPC | orel-gob-dev-euw1-vpc-main |
@@ -236,6 +258,7 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 | Cloud NAT | orel-gob-dev-euw1-main-nat |
 | PSA Allocation | orel-gob-dev-euw1-psa-google-managed (10.16.0.0/16) |
 | PSA Connection | servicenetworking.googleapis.com peering |
+| Static IP | orel-gob-dev-euw1-ip-ingress (Regional External, STANDARD tier) |
 | APIs | compute, container, servicenetworking, sqladmin |
 
 ### Stage 2: Data Layer - CODE READY, NOT APPLIED
@@ -275,11 +298,10 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 | API | container.googleapis.com |
 
 **What's next:**
-1. Apply automation (one-time): `terraform -chdir=gob/automation apply -var-file=tfvars/orel/dev.tfvars`
-2. Configure GitHub Secrets (WIF_PROVIDER, WIF_SERVICE_ACCOUNT, GCP_PROJECT_ID)
-3. Push to GitHub and use workflows to deploy all layers
-4. Verify in GCP Console (checklists below)
-5. Start Stage 5: Identity & Ingress
+1. Configure GitHub Secrets (WIF_PROVIDER, SERVICE_ACCOUNT, GCP_PROJECT_ID)
+2. Push to GitHub and use workflows to deploy all layers (networking → database → compute → identity)
+3. Verify in GCP Console (checklists below)
+4. Start Stage 6: Application Deployment
 
 ### Stage 4: Automation & CI/CD - APPLIED
 
@@ -309,11 +331,11 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 |---------|----------|
 | Trigger | workflow_dispatch |
 | Actions | plan, apply, destroy |
-| Layer Selection | Boolean checkboxes per layer (networking, database, compute) |
+| Layer Selection | Boolean checkboxes per layer (networking, database, compute, identity) |
 | Dependency Resolution | Auto-adds required/dependent layers with visible warnings |
 | Fail-Fast | If a layer fails, subsequent layers are skipped |
-| Apply Order | networking → database → compute |
-| Destroy Order | compute → database → networking |
+| Apply Order | networking → database → compute → identity |
+| Destroy Order | identity → compute → database → networking |
 
 **GitHub Secrets (after automation apply):**
 | Secret | Value |
@@ -322,13 +344,36 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 | `WIF_PROVIDER` | `terraform output wif_provider_names` |
 | `WIF_SERVICE_ACCOUNT` | `terraform output service_account_emails` |
 
+### Stage 5: Identity & Ingress - CODE READY, NOT APPLIED
+
+**What's done:**
+- 2 new per-resource modules (static_ip, wi_binding)
+- Static IP added to `gob/networking/` layer (+1 resource)
+- New layer code at `gob/identity/` with dynamic backend
+- Client config at `gob/identity/tfvars/orel/dev.tfvars`
+- `terraform validate` successful
+- Reads database outputs via `terraform_remote_state`
+- Workflow updated with identity layer (apply/destroy/dependency resolution)
+- Design doc: `docs/plans/2026-03-08-identity-ingress-design.md`
+
+**Identity resources (1 total):**
+| Resource | Name |
+|----------|------|
+| WI Binding | KSA `boutique/boutique-sql-proxy` → GSA `orel-gob-dev-euw1-sa-btq-sql` |
+
+**Networking addition (+1, now 16 total):**
+| Resource | Name |
+|----------|------|
+| Static IP | orel-gob-dev-euw1-ip-ingress (Regional External, STANDARD tier) |
+
 ### GCP Console Verification Checklist - Networking (after apply):
 1. **VPC Networks** - `orel-gob-dev-euw1-vpc-main` exists, Regional routing, no auto subnets
 2. **Subnets** - GKE subnet with secondary ranges, proxy subnet with REGIONAL_MANAGED_PROXY
 3. **Firewall** - 4 rules with correct priorities and sources
 4. **Cloud NAT** - NAT in europe-west1 with auto IPs
 5. **PSA** - Allocated range 10.16.0.0/16 peered to servicenetworking
-6. **APIs** - 4 APIs enabled
+6. **Static IP** - `orel-gob-dev-euw1-ip-ingress` exists, Regional, External, STANDARD tier
+7. **APIs** - 4 APIs enabled
 
 ### GCP Console Verification Checklist - Database (after apply):
 1. **SQL > Instances** - `orel-gob-dev-euw1-sql-main` exists, PostgreSQL 15, db-f1-micro
@@ -352,12 +397,15 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 4. **IAM > Permissions** - GSA has `roles/editor` and `roles/servicenetworking.networksAdmin`
 5. **GitHub Actions** - Run workflow with `plan` action to verify WIF auth works
 
+### GCP Console Verification Checklist - Identity (after apply):
+1. **IAM > Service Accounts > orel-gob-dev-euw1-sa-btq-sql > Permissions** — `roles/iam.workloadIdentityUser` bound to `serviceAccount:orel-bh-sandbox.svc.id.goog[boutique/boutique-sql-proxy]`
+
 ### GitHub Actions Verification Checklist (after secrets configured):
-1. **Plan all** - Run `terraform.yml` with action=plan, all layers checked → all 3 layers plan successfully
+1. **Plan all** - Run `terraform.yml` with action=plan, all layers checked → all 4 layers plan successfully
 2. **Apply all** - Run `terraform.yml` with action=apply, all layers checked → all layers created
 3. **Destroy all** - Run `terraform.yml` with action=destroy, all layers checked → all layers destroyed in reverse order
-4. **Single layer test** - Run with only compute checked → resolve job auto-adds database + networking
-5. **Fail-fast test** - If networking fails, database and compute are skipped
+4. **Single layer test** - Run with only identity checked → resolve job auto-adds database + networking
+5. **Fail-fast test** - If networking fails, database, compute, and identity are skipped
 6. **Dependency visibility** - Check resolve job logs and Step Summary for auto-added layers
 
 ## Design Documents
@@ -367,4 +415,5 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 - `docs/plans/2026-03-02-compute-layer-design.md` - Compute Layer design document
 - `docs/plans/2026-03-02-compute-layer-implementation.md` - Compute Layer implementation plan
 - `docs/plans/2026-03-04-automation-cicd-design.md` - Automation & CI/CD design document
-- `docs/plans/2026-03-04-automation-cicd-implementation.md` - Automation & 
+- `docs/plans/2026-03-04-automation-cicd-implementation.md` - Automation & CI/CD implementation plan
+- `docs/plans/2026-03-08-identity-ingress-design.md` - Identity & Ingress design document

@@ -105,3 +105,11 @@ psa_connections = {
     cidr    = "10.16.0.0/16"
   }
 }
+
+# =============================================================================
+# Static IP Addresses
+# =============================================================================
+
+static_ips = {
+  "ingress" = {}   # defaults: EXTERNAL, STANDARD → orel-gob-dev-euw1-ip-ingress
+}

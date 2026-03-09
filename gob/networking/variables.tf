@@ -88,3 +88,12 @@ variable "psa_connections" {
   }))
   default = {}
 }
+
+variable "static_ips" {
+  description = "Map of static IP address configurations. Key = IP name suffix."
+  type = map(object({
+    address_type = optional(string, "EXTERNAL")
+    network_tier = optional(string, "STANDARD")
+  }))
+  default = {}
+}

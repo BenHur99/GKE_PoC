@@ -26,6 +26,11 @@ on:
         required: false
         type: boolean
         default: false
+      layer_identity:
+        description: "Layer: Identity"
+        required: false
+        type: boolean
+        default: false
       client:
         description: "Client name"
         required: true
@@ -56,6 +61,7 @@ jobs:
       run_networking: ${{ steps.resolve.outputs.run_networking }}
       run_database: ${{ steps.resolve.outputs.run_database }}
       run_compute: ${{ steps.resolve.outputs.run_compute }}
+      run_identity: ${{ steps.resolve.outputs.run_identity }}
       execution_order: ${{ steps.resolve.outputs.execution_order }}
     steps:
       - name: Resolve dependencies
@@ -68,6 +74,7 @@ jobs:
           echo "  Networking: ${{ inputs.layer_networking }}"
           echo "  Database:   ${{ inputs.layer_database }}"
           echo "  Compute:    ${{ inputs.layer_compute }}"
+          echo "  Identity:   ${{ inputs.layer_identity }}"
           echo "============================================="
           echo ""
 
@@ -76,6 +83,7 @@ jobs:
           #   networking  → (none)
           #   database    → networking
           #   compute     → database → networking
+          #   identity    → database (for GSA names via remote_state)
           #
           # For destroy the execution order is reversed, but the dependency
           # resolution is the same — if you destroy networking you must
@@ -85,9 +93,10 @@ jobs:
           NETWORKING="${{ inputs.layer_networking }}"
           DATABASE="${{ inputs.layer_database }}"
           COMPUTE="${{ inputs.layer_compute }}"
+          IDENTITY="${{ inputs.layer_identity }}"
 
           # If nothing was selected, fail early
-          if [[ "$NETWORKING" == "false" && "$DATABASE" == "false" && "$COMPUTE" == "false" ]]; then
+          if [[ "$NETWORKING" == "false" && "$DATABASE" == "false" && "$COMPUTE" == "false" && "$IDENTITY" == "false" ]]; then
             echo "::error::No layers selected. Please select at least one layer."
             exit 1
           fi
@@ -105,8 +114,16 @@ jobs:
               COMPUTE="true"
               AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added COMPUTE (depends on database)\n"
             fi
+            if [[ "$DATABASE" == "true" && "$IDENTITY" == "false" ]]; then
+              IDENTITY="true"
+              AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added IDENTITY (depends on database)\n"
+            fi
           else
             # Apply / Plan direction: if a layer needs a base layer, add it
+            if [[ "$IDENTITY" == "true" && "$DATABASE" == "false" ]]; then
+              DATABASE="true"
+              AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added DATABASE (required by identity)\n"
+            fi
             if [[ "$COMPUTE" == "true" && "$DATABASE" == "false" ]]; then
               DATABASE="true"
               AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added DATABASE (required by compute)\n"
@@ -120,6 +137,7 @@ jobs:
           # Build execution order string for display
           if [[ "${{ inputs.action }}" == "destroy" ]]; then
             ORDER=""
+            [[ "$IDENTITY" == "true" ]] && ORDER="${ORDER}identity → "
             [[ "$COMPUTE" == "true" ]] && ORDER="${ORDER}compute → "
             [[ "$DATABASE" == "true" ]] && ORDER="${ORDER}database → "
             [[ "$NETWORKING" == "true" ]] && ORDER="${ORDER}networking → "
@@ -129,6 +147,7 @@ jobs:
             [[ "$NETWORKING" == "true" ]] && ORDER="${ORDER}networking → "
             [[ "$DATABASE" == "true" ]] && ORDER="${ORDER}database → "
             [[ "$COMPUTE" == "true" ]] && ORDER="${ORDER}compute → "
+            [[ "$IDENTITY" == "true" ]] && ORDER="${ORDER}identity → "
             ORDER="${ORDER%% → }"
           fi
 
@@ -151,11 +170,13 @@ jobs:
           echo "  Networking: ${NETWORKING}"
           echo "  Database:   ${DATABASE}"
           echo "  Compute:    ${COMPUTE}"
+          echo "  Identity:   ${IDENTITY}"
           echo "============================================="
 
           echo "run_networking=${NETWORKING}" >> "$GITHUB_OUTPUT"
           echo "run_database=${DATABASE}" >> "$GITHUB_OUTPUT"
           echo "run_compute=${COMPUTE}" >> "$GITHUB_OUTPUT"
+          echo "run_identity=${IDENTITY}" >> "$GITHUB_OUTPUT"
           echo "execution_order=${ORDER}" >> "$GITHUB_OUTPUT"
 
       - name: Summary
@@ -177,10 +198,11 @@ jobs:
           | Networking | ${{ steps.resolve.outputs.run_networking == 'true' && '✅ Selected' || '⏭️ Skipped' }} |
           | Database | ${{ steps.resolve.outputs.run_database == 'true' && '✅ Selected' || '⏭️ Skipped' }} |
           | Compute | ${{ steps.resolve.outputs.run_compute == 'true' && '✅ Selected' || '⏭️ Skipped' }} |
+          | Identity | ${{ steps.resolve.outputs.run_identity == 'true' && '✅ Selected' || '⏭️ Skipped' }} |
           EOF
 
   # ===========================================================================
-  # APPLY / PLAN DIRECTION: networking → database → compute
+  # APPLY / PLAN DIRECTION: networking → database → compute → identity
   # ===========================================================================
 
   # Layer 1: Networking
@@ -289,17 +311,85 @@ jobs:
         if: inputs.action == 'apply'
         run: terraform -chdir=gob/compute apply -auto-approve -var-file=${{ env.TF_VAR_FILE }}
 
+  # Layer 4: Identity
+  identity-apply:
+    name: "Identity (${{ inputs.action }})"
+    needs: [resolve, database-apply]
+    if: |
+      always() &&
+      needs.resolve.outputs.run_identity == 'true' &&
+      inputs.action != 'destroy' &&
+      (needs.database-apply.result == 'success' || needs.database-apply.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform -chdir=gob/identity init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/identity"
+
+      - name: Terraform Plan
+        run: terraform -chdir=gob/identity plan -var-file=${{ env.TF_VAR_FILE }}
+
+      - name: Terraform Apply
+        if: inputs.action == 'apply'
+        run: terraform -chdir=gob/identity apply -auto-approve -var-file=${{ env.TF_VAR_FILE }}
+
   # ===========================================================================
-  # DESTROY DIRECTION: compute → database → networking
+  # DESTROY DIRECTION: identity → compute → database → networking
   # ===========================================================================
 
-  # Layer 3: Compute (destroyed first)
-  compute-destroy:
-    name: "Compute (destroy)"
+  # Layer 4: Identity (destroyed first)
+  identity-destroy:
+    name: "Identity (destroy)"
     needs: [resolve]
     if: |
-      needs.resolve.outputs.run_compute == 'true' &&
+      needs.resolve.outputs.run_identity == 'true' &&
       inputs.action == 'destroy'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform -chdir=gob/identity init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/identity"
+
+      - name: Terraform Destroy
+        run: terraform -chdir=gob/identity destroy -auto-approve -var-file=${{ env.TF_VAR_FILE }}
+
+  # Layer 3: Compute (destroyed second)
+  compute-destroy:
+    name: "Compute (destroy)"
+    needs: [resolve, identity-destroy]
+    if: |
+      always() &&
+      needs.resolve.outputs.run_compute == 'true' &&
+      inputs.action == 'destroy' &&
+      (needs.identity-destroy.result == 'success' || needs.identity-destroy.result == 'skipped')
     runs-on: ubuntu-latest
     environment: ${{ inputs.client }}-${{ inputs.env_name }}
     steps:
@@ -323,7 +413,7 @@ jobs:
       - name: Terraform Destroy
         run: terraform -chdir=gob/compute destroy -auto-approve -var-file=${{ env.TF_VAR_FILE }}
 
-  # Layer 2: Database (destroyed second)
+  # Layer 2: Database (destroyed third)
   database-destroy:
     name: "Database (destroy)"
     needs: [resolve, compute-destroy]
@@ -355,7 +445,7 @@ jobs:
       - name: Terraform Destroy
         run: terraform -chdir=gob/database destroy -auto-approve -var-file=${{ env.TF_VAR_FILE }}
 
-  # Layer 1: Networking (destroyed last)
+  # Layer 1: Networking (destroyed fourth/last)
   networking-destroy:
     name: "Networking (destroy)"
     needs: [resolve, database-destroy]
