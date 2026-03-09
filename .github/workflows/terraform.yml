@@ -240,16 +240,96 @@ jobs:
           EOF
 
   # ===========================================================================
+  # PLAN ALL — runs plan on every selected layer, outputs summary for review
+  # ===========================================================================
+  plan-all:
+    name: "Plan All Layers"
+    needs: [resolve]
+    if: inputs.action == 'apply' || inputs.action == 'destroy'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Plan Networking
+        if: needs.resolve.outputs.run_networking == 'true'
+        run: |
+          terraform -chdir=gob/networking init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/networking"
+          terraform -chdir=gob/networking plan -var-file=${{ env.TF_VAR_FILE }}
+
+      - name: Plan Database
+        if: needs.resolve.outputs.run_database == 'true'
+        run: |
+          terraform -chdir=gob/database init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/database"
+          terraform -chdir=gob/database plan -var-file=${{ env.TF_VAR_FILE }}
+
+      - name: Plan Compute
+        if: needs.resolve.outputs.run_compute == 'true'
+        run: |
+          terraform -chdir=gob/compute init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/compute"
+          terraform -chdir=gob/compute plan -var-file=${{ env.TF_VAR_FILE }}
+
+      - name: Plan Identity
+        if: needs.resolve.outputs.run_identity == 'true'
+        run: |
+          terraform -chdir=gob/identity init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/identity"
+          terraform -chdir=gob/identity plan -var-file=${{ env.TF_VAR_FILE }}
+
+      - name: Plan Summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## 📋 Plan Complete — Review Before ${{ inputs.action == 'apply' && 'Apply' || 'Destroy' }}
+
+          All selected layers have been planned. Review the output above, then approve
+          the **approval-gate** job to proceed with \`${{ inputs.action }}\`.
+
+          | Layer | Planned |
+          |-------|---------|
+          | Networking | ${{ needs.resolve.outputs.run_networking == 'true' && '✅' || '⏭️ skipped' }} |
+          | Database   | ${{ needs.resolve.outputs.run_database == 'true' && '✅' || '⏭️ skipped' }} |
+          | Compute    | ${{ needs.resolve.outputs.run_compute == 'true' && '✅' || '⏭️ skipped' }} |
+          | Identity   | ${{ needs.resolve.outputs.run_identity == 'true' && '✅' || '⏭️ skipped' }} |
+          EOF
+
+  # ===========================================================================
+  # APPROVAL GATE — pauses and waits for a human reviewer
+  # Requires environment "orel-dev-approval" to have required_reviewers set.
+  # ===========================================================================
+  approval-gate:
+    name: "Approval Gate"
+    needs: [resolve, plan-all]
+    if: inputs.action == 'apply' || inputs.action == 'destroy'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
+    steps:
+      - name: Approved
+        run: echo "✅ Approved — proceeding with ${{ inputs.action }}"
+
+  # ===========================================================================
   # APPLY / PLAN DIRECTION: networking → database → compute → identity
   # ===========================================================================
 
   # Layer 1: Networking
   networking-apply:
     name: "Networking (${{ inputs.action }})"
-    needs: [resolve]
+    needs: [resolve, approval-gate]
     if: |
+      always() &&
       needs.resolve.outputs.run_networking == 'true' &&
-      inputs.action != 'destroy'
+      inputs.action != 'destroy' &&
+      (needs.approval-gate.result == 'success' || needs.approval-gate.result == 'skipped')
     runs-on: ubuntu-latest
     environment: ${{ inputs.client }}-${{ inputs.env_name }}
     steps:
@@ -484,7 +564,7 @@ jobs:
   # Application must be uninstalled before identity destroy (WI binding removal)
   destroy-app:
     name: "Destroy Online Boutique (Helm)"
-    needs: [resolve]
+    needs: [resolve, approval-gate]
     if: |
       needs.resolve.outputs.run_deploy_app == 'true' &&
       inputs.action == 'destroy'
