@@ -240,96 +240,19 @@ jobs:
           EOF
 
   # ===========================================================================
-  # PLAN ALL — runs plan on every selected layer, outputs summary for review
+  # APPLY DIRECTION: networking → database → compute → identity
+  # Each layer: plan job → approval environment → apply job
   # ===========================================================================
-  plan-all:
-    name: "Plan All Layers"
+
+  # ---------------------------------------------------------------------------
+  # Layer 1: Networking — Plan
+  # ---------------------------------------------------------------------------
+  networking-plan:
+    name: "Networking (plan)"
     needs: [resolve]
-    if: inputs.action == 'apply' || inputs.action == 'destroy'
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.client }}-${{ inputs.env_name }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
-        with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ secrets.SERVICE_ACCOUNT }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-
-      - name: Plan Networking
-        if: needs.resolve.outputs.run_networking == 'true'
-        run: |
-          terraform -chdir=gob/networking init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/networking"
-          terraform -chdir=gob/networking plan -var-file=${{ env.TF_VAR_FILE }}
-
-      - name: Plan Database
-        if: needs.resolve.outputs.run_database == 'true'
-        run: |
-          terraform -chdir=gob/database init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/database"
-          terraform -chdir=gob/database plan -var-file=${{ env.TF_VAR_FILE }}
-
-      - name: Plan Compute
-        if: needs.resolve.outputs.run_compute == 'true'
-        run: |
-          terraform -chdir=gob/compute init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/compute"
-          terraform -chdir=gob/compute plan -var-file=${{ env.TF_VAR_FILE }}
-
-      - name: Plan Identity
-        if: needs.resolve.outputs.run_identity == 'true'
-        run: |
-          terraform -chdir=gob/identity init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/identity"
-          terraform -chdir=gob/identity plan -var-file=${{ env.TF_VAR_FILE }}
-
-      - name: Plan Summary
-        run: |
-          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
-          ## 📋 Plan Complete — Review Before ${{ inputs.action == 'apply' && 'Apply' || 'Destroy' }}
-
-          All selected layers have been planned. Review the output above, then approve
-          the **approval-gate** job to proceed with \`${{ inputs.action }}\`.
-
-          | Layer | Planned |
-          |-------|---------|
-          | Networking | ${{ needs.resolve.outputs.run_networking == 'true' && '✅' || '⏭️ skipped' }} |
-          | Database   | ${{ needs.resolve.outputs.run_database == 'true' && '✅' || '⏭️ skipped' }} |
-          | Compute    | ${{ needs.resolve.outputs.run_compute == 'true' && '✅' || '⏭️ skipped' }} |
-          | Identity   | ${{ needs.resolve.outputs.run_identity == 'true' && '✅' || '⏭️ skipped' }} |
-          EOF
-
-  # ===========================================================================
-  # APPROVAL GATE — pauses and waits for a human reviewer
-  # Requires environment "orel-dev-approval" to have required_reviewers set.
-  # ===========================================================================
-  approval-gate:
-    name: "Approval Gate"
-    needs: [resolve, plan-all]
-    if: inputs.action == 'apply' || inputs.action == 'destroy'
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
-    steps:
-      - name: Approved
-        run: echo "✅ Approved — proceeding with ${{ inputs.action }}"
-
-  # ===========================================================================
-  # APPLY / PLAN DIRECTION: networking → database → compute → identity
-  # ===========================================================================
-
-  # Layer 1: Networking
-  networking-apply:
-    name: "Networking (${{ inputs.action }})"
-    needs: [resolve, approval-gate]
     if: |
-      always() &&
       needs.resolve.outputs.run_networking == 'true' &&
-      inputs.action != 'destroy' &&
-      (needs.approval-gate.result == 'success' || needs.approval-gate.result == 'skipped')
+      inputs.action != 'destroy'
     runs-on: ubuntu-latest
     environment: ${{ inputs.client }}-${{ inputs.env_name }}
     steps:
@@ -353,13 +276,47 @@ jobs:
       - name: Terraform Plan
         run: terraform -chdir=gob/networking plan -var-file=${{ env.TF_VAR_FILE }}
 
+  # ---------------------------------------------------------------------------
+  # Layer 1: Networking — Approval + Apply
+  # environment "orel-dev-approval" must have required_reviewers configured.
+  # ---------------------------------------------------------------------------
+  networking-apply:
+    name: "Networking (apply)"
+    needs: [resolve, networking-plan]
+    if: |
+      always() &&
+      needs.resolve.outputs.run_networking == 'true' &&
+      inputs.action == 'apply' &&
+      needs.networking-plan.result == 'success'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform -chdir=gob/networking init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/networking"
+
       - name: Terraform Apply
-        if: inputs.action == 'apply'
         run: terraform -chdir=gob/networking apply -auto-approve -var-file=${{ env.TF_VAR_FILE }}
 
-  # Layer 2: Database
-  database-apply:
-    name: "Database (${{ inputs.action }})"
+  # ---------------------------------------------------------------------------
+  # Layer 2: Database — Plan
+  # Runs after networking-apply (success or skipped when not selected)
+  # ---------------------------------------------------------------------------
+  database-plan:
+    name: "Database (plan)"
     needs: [resolve, networking-apply]
     if: |
       always() &&
@@ -389,13 +346,45 @@ jobs:
       - name: Terraform Plan
         run: terraform -chdir=gob/database plan -var-file=${{ env.TF_VAR_FILE }}
 
+  # ---------------------------------------------------------------------------
+  # Layer 2: Database — Approval + Apply
+  # ---------------------------------------------------------------------------
+  database-apply:
+    name: "Database (apply)"
+    needs: [resolve, database-plan]
+    if: |
+      always() &&
+      needs.resolve.outputs.run_database == 'true' &&
+      inputs.action == 'apply' &&
+      needs.database-plan.result == 'success'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform -chdir=gob/database init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/database"
+
       - name: Terraform Apply
-        if: inputs.action == 'apply'
         run: terraform -chdir=gob/database apply -auto-approve -var-file=${{ env.TF_VAR_FILE }}
 
-  # Layer 3: Compute
-  compute-apply:
-    name: "Compute (${{ inputs.action }})"
+  # ---------------------------------------------------------------------------
+  # Layer 3: Compute — Plan
+  # ---------------------------------------------------------------------------
+  compute-plan:
+    name: "Compute (plan)"
     needs: [resolve, database-apply]
     if: |
       always() &&
@@ -425,13 +414,45 @@ jobs:
       - name: Terraform Plan
         run: terraform -chdir=gob/compute plan -var-file=${{ env.TF_VAR_FILE }}
 
+  # ---------------------------------------------------------------------------
+  # Layer 3: Compute — Approval + Apply
+  # ---------------------------------------------------------------------------
+  compute-apply:
+    name: "Compute (apply)"
+    needs: [resolve, compute-plan]
+    if: |
+      always() &&
+      needs.resolve.outputs.run_compute == 'true' &&
+      inputs.action == 'apply' &&
+      needs.compute-plan.result == 'success'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform -chdir=gob/compute init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/compute"
+
       - name: Terraform Apply
-        if: inputs.action == 'apply'
         run: terraform -chdir=gob/compute apply -auto-approve -var-file=${{ env.TF_VAR_FILE }}
 
-  # Layer 4: Identity
-  identity-apply:
-    name: "Identity (${{ inputs.action }})"
+  # ---------------------------------------------------------------------------
+  # Layer 4: Identity — Plan
+  # ---------------------------------------------------------------------------
+  identity-plan:
+    name: "Identity (plan)"
     needs: [resolve, database-apply]
     if: |
       always() &&
@@ -461,8 +482,38 @@ jobs:
       - name: Terraform Plan
         run: terraform -chdir=gob/identity plan -var-file=${{ env.TF_VAR_FILE }}
 
+  # ---------------------------------------------------------------------------
+  # Layer 4: Identity — Approval + Apply
+  # ---------------------------------------------------------------------------
+  identity-apply:
+    name: "Identity (apply)"
+    needs: [resolve, identity-plan]
+    if: |
+      always() &&
+      needs.resolve.outputs.run_identity == 'true' &&
+      inputs.action == 'apply' &&
+      needs.identity-plan.result == 'success'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform -chdir=gob/identity init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/identity"
+
       - name: Terraform Apply
-        if: inputs.action == 'apply'
         run: terraform -chdir=gob/identity apply -auto-approve -var-file=${{ env.TF_VAR_FILE }}
 
   # ==========================================================================
@@ -559,12 +610,15 @@ jobs:
 
   # ===========================================================================
   # DESTROY DIRECTION: identity → compute → database → networking
+  # Each layer: plan -destroy job → approval environment → destroy job
   # ===========================================================================
 
-  # Application must be uninstalled before identity destroy (WI binding removal)
-  destroy-app:
-    name: "Destroy Online Boutique (Helm)"
-    needs: [resolve, approval-gate]
+  # ---------------------------------------------------------------------------
+  # Application — must be uninstalled first (before identity destroy)
+  # ---------------------------------------------------------------------------
+  destroy-app-plan:
+    name: "Destroy App (plan)"
+    needs: [resolve]
     if: |
       needs.resolve.outputs.run_deploy_app == 'true' &&
       inputs.action == 'destroy'
@@ -602,14 +656,66 @@ jobs:
         with:
           version: v3.14.0
 
+      - name: Helm Diff (dry-run)
+        run: |
+          echo "The following Helm release will be uninstalled:"
+          helm list --namespace boutique || true
+          echo ""
+          echo "Kubernetes resources in namespace boutique:"
+          kubectl get all -n boutique || true
+
+  destroy-app:
+    name: "Destroy App (apply)"
+    needs: [resolve, destroy-app-plan]
+    if: |
+      always() &&
+      needs.resolve.outputs.run_deploy_app == 'true' &&
+      inputs.action == 'destroy' &&
+      needs.destroy-app-plan.result == 'success'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Install gke-gcloud-auth-plugin
+        run: |
+          gcloud components install gke-gcloud-auth-plugin --quiet 2>/dev/null || true
+
+      - name: Get GKE Credentials
+        run: |
+          CLUSTER_NAME=$(cd gob/compute && terraform init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/compute" > /dev/null 2>&1 && terraform output -json cluster_names | jq -r '.main')
+          gcloud container clusters get-credentials "$CLUSTER_NAME" \
+            --zone europe-west1-b \
+            --project ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@fe7b79cd5ee1e45176fcad797de68ecaf3ca4814 # v4.2.0
+        with:
+          version: v3.14.0
+
       - name: Helm Uninstall
         run: |
           helm uninstall online-boutique --namespace boutique --wait --timeout 3m || true
           kubectl delete namespace boutique --timeout=60s || true
 
-  # Layer 4: Identity (destroyed after app uninstall)
-  identity-destroy:
-    name: "Identity (destroy)"
+  # ---------------------------------------------------------------------------
+  # Layer 4: Identity — Plan -destroy + Approval + Destroy
+  # ---------------------------------------------------------------------------
+  identity-destroy-plan:
+    name: "Identity (destroy plan)"
     needs: [resolve, destroy-app]
     if: |
       always() &&
@@ -636,12 +742,45 @@ jobs:
       - name: Terraform Init
         run: terraform -chdir=gob/identity init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/identity"
 
+      - name: Terraform Plan Destroy
+        run: terraform -chdir=gob/identity plan -destroy -var-file=${{ env.TF_VAR_FILE }}
+
+  identity-destroy:
+    name: "Identity (destroy)"
+    needs: [resolve, identity-destroy-plan]
+    if: |
+      always() &&
+      needs.resolve.outputs.run_identity == 'true' &&
+      inputs.action == 'destroy' &&
+      needs.identity-destroy-plan.result == 'success'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform -chdir=gob/identity init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/identity"
+
       - name: Terraform Destroy
         run: terraform -chdir=gob/identity destroy -auto-approve -var-file=${{ env.TF_VAR_FILE }}
 
-  # Layer 3: Compute (destroyed second)
-  compute-destroy:
-    name: "Compute (destroy)"
+  # ---------------------------------------------------------------------------
+  # Layer 3: Compute — Plan -destroy + Approval + Destroy
+  # ---------------------------------------------------------------------------
+  compute-destroy-plan:
+    name: "Compute (destroy plan)"
     needs: [resolve, identity-destroy]
     if: |
       always() &&
@@ -668,12 +807,45 @@ jobs:
       - name: Terraform Init
         run: terraform -chdir=gob/compute init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/compute"
 
+      - name: Terraform Plan Destroy
+        run: terraform -chdir=gob/compute plan -destroy -var-file=${{ env.TF_VAR_FILE }}
+
+  compute-destroy:
+    name: "Compute (destroy)"
+    needs: [resolve, compute-destroy-plan]
+    if: |
+      always() &&
+      needs.resolve.outputs.run_compute == 'true' &&
+      inputs.action == 'destroy' &&
+      needs.compute-destroy-plan.result == 'success'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform -chdir=gob/compute init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/compute"
+
       - name: Terraform Destroy
         run: terraform -chdir=gob/compute destroy -auto-approve -var-file=${{ env.TF_VAR_FILE }}
 
-  # Layer 2: Database (destroyed third)
-  database-destroy:
-    name: "Database (destroy)"
+  # ---------------------------------------------------------------------------
+  # Layer 2: Database — Plan -destroy + Approval + Destroy
+  # ---------------------------------------------------------------------------
+  database-destroy-plan:
+    name: "Database (destroy plan)"
     needs: [resolve, compute-destroy]
     if: |
       always() &&
@@ -700,12 +872,45 @@ jobs:
       - name: Terraform Init
         run: terraform -chdir=gob/database init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/database"
 
+      - name: Terraform Plan Destroy
+        run: terraform -chdir=gob/database plan -destroy -var-file=${{ env.TF_VAR_FILE }}
+
+  database-destroy:
+    name: "Database (destroy)"
+    needs: [resolve, database-destroy-plan]
+    if: |
+      always() &&
+      needs.resolve.outputs.run_database == 'true' &&
+      inputs.action == 'destroy' &&
+      needs.database-destroy-plan.result == 'success'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform -chdir=gob/database init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/database"
+
       - name: Terraform Destroy
         run: terraform -chdir=gob/database destroy -auto-approve -var-file=${{ env.TF_VAR_FILE }}
 
-  # Layer 1: Networking (destroyed fourth/last)
-  networking-destroy:
-    name: "Networking (destroy)"
+  # ---------------------------------------------------------------------------
+  # Layer 1: Networking — Plan -destroy + Approval + Destroy
+  # ---------------------------------------------------------------------------
+  networking-destroy-plan:
+    name: "Networking (destroy plan)"
     needs: [resolve, database-destroy]
     if: |
       always() &&
@@ -714,6 +919,37 @@ jobs:
       (needs.database-destroy.result == 'success' || needs.database-destroy.result == 'skipped')
     runs-on: ubuntu-latest
     environment: ${{ inputs.client }}-${{ inputs.env_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform -chdir=gob/networking init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/networking"
+
+      - name: Terraform Plan Destroy
+        run: terraform -chdir=gob/networking plan -destroy -var-file=${{ env.TF_VAR_FILE }}
+
+  networking-destroy:
+    name: "Networking (destroy)"
+    needs: [resolve, networking-destroy-plan]
+    if: |
+      always() &&
+      needs.resolve.outputs.run_networking == 'true' &&
+      inputs.action == 'destroy' &&
+      needs.networking-destroy-plan.result == 'success'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
