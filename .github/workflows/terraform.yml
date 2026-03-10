@@ -267,7 +267,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Layer 1: Networking — Approval + Apply
-  # environment "orel-dev-approval" must have required_reviewers configured.
+  # environment "orel-dev" must have required_reviewers configured in GitHub Settings.
   # ---------------------------------------------------------------------------
   networking-apply:
     name: "Networking (apply)"
@@ -278,7 +278,7 @@ jobs:
       inputs.action == 'apply' &&
       needs.networking-plan.result == 'success'
     runs-on: ubuntu-latest
-    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -347,7 +347,7 @@ jobs:
       inputs.action == 'apply' &&
       needs.database-plan.result == 'success'
     runs-on: ubuntu-latest
-    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -415,7 +415,7 @@ jobs:
       inputs.action == 'apply' &&
       needs.compute-plan.result == 'success'
     runs-on: ubuntu-latest
-    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -483,7 +483,7 @@ jobs:
       inputs.action == 'apply' &&
       needs.identity-plan.result == 'success'
     runs-on: ubuntu-latest
-    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -662,7 +662,7 @@ jobs:
       inputs.action == 'destroy' &&
       needs.destroy-app-plan.result == 'success'
     runs-on: ubuntu-latest
-    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -743,7 +743,7 @@ jobs:
       inputs.action == 'destroy' &&
       needs.identity-destroy-plan.result == 'success'
     runs-on: ubuntu-latest
-    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -808,7 +808,7 @@ jobs:
       inputs.action == 'destroy' &&
       needs.compute-destroy-plan.result == 'success'
     runs-on: ubuntu-latest
-    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -873,7 +873,7 @@ jobs:
       inputs.action == 'destroy' &&
       needs.database-destroy-plan.result == 'success'
     runs-on: ubuntu-latest
-    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -938,7 +938,7 @@ jobs:
       inputs.action == 'destroy' &&
       needs.networking-destroy-plan.result == 'success'
     runs-on: ubuntu-latest
-    environment: ${{ inputs.client }}-${{ inputs.env_name }}-approval
+    environment: ${{ inputs.client }}-${{ inputs.env_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
