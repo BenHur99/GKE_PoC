@@ -230,7 +230,6 @@ jobs:
 
   # ===========================================================================
   # APPLY DIRECTION: networking → database → compute → identity
-  # Each layer: plan job → approval environment → apply job
   # ===========================================================================
 
   # ---------------------------------------------------------------------------
@@ -266,8 +265,7 @@ jobs:
         run: terraform -chdir=gob/networking plan -var-file=${{ env.TF_VAR_FILE }}
 
   # ---------------------------------------------------------------------------
-  # Layer 1: Networking — Approval + Apply
-  # environment "orel-dev" must have required_reviewers configured in GitHub Settings.
+  # Layer 1: Networking — Apply
   # ---------------------------------------------------------------------------
   networking-apply:
     name: "Networking (apply)"
@@ -336,7 +334,7 @@ jobs:
         run: terraform -chdir=gob/database plan -var-file=${{ env.TF_VAR_FILE }}
 
   # ---------------------------------------------------------------------------
-  # Layer 2: Database — Approval + Apply
+  # Layer 2: Database — Apply
   # ---------------------------------------------------------------------------
   database-apply:
     name: "Database (apply)"
@@ -404,7 +402,7 @@ jobs:
         run: terraform -chdir=gob/compute plan -var-file=${{ env.TF_VAR_FILE }}
 
   # ---------------------------------------------------------------------------
-  # Layer 3: Compute — Approval + Apply
+  # Layer 3: Compute — Apply
   # ---------------------------------------------------------------------------
   compute-apply:
     name: "Compute (apply)"
@@ -472,7 +470,7 @@ jobs:
         run: terraform -chdir=gob/identity plan -var-file=${{ env.TF_VAR_FILE }}
 
   # ---------------------------------------------------------------------------
-  # Layer 4: Identity — Approval + Apply
+  # Layer 4: Identity — Apply
   # ---------------------------------------------------------------------------
   identity-apply:
     name: "Identity (apply)"
@@ -599,7 +597,6 @@ jobs:
 
   # ===========================================================================
   # DESTROY DIRECTION: identity → compute → database → networking
-  # Each layer: plan -destroy job → approval environment → destroy job
   # ===========================================================================
 
   # ---------------------------------------------------------------------------
@@ -701,7 +698,7 @@ jobs:
           kubectl delete namespace boutique --timeout=60s || true
 
   # ---------------------------------------------------------------------------
-  # Layer 4: Identity — Plan -destroy + Approval + Destroy
+  # Layer 4: Identity — Plan -destroy + Destroy
   # ---------------------------------------------------------------------------
   identity-destroy-plan:
     name: "Identity (destroy plan)"
@@ -766,7 +763,7 @@ jobs:
         run: terraform -chdir=gob/identity destroy -auto-approve -var-file=${{ env.TF_VAR_FILE }}
 
   # ---------------------------------------------------------------------------
-  # Layer 3: Compute — Plan -destroy + Approval + Destroy
+  # Layer 3: Compute — Plan -destroy + Destroy
   # ---------------------------------------------------------------------------
   compute-destroy-plan:
     name: "Compute (destroy plan)"
@@ -831,7 +828,7 @@ jobs:
         run: terraform -chdir=gob/compute destroy -auto-approve -var-file=${{ env.TF_VAR_FILE }}
 
   # ---------------------------------------------------------------------------
-  # Layer 2: Database — Plan -destroy + Approval + Destroy
+  # Layer 2: Database — Plan -destroy + Destroy
   # ---------------------------------------------------------------------------
   database-destroy-plan:
     name: "Database (destroy plan)"
@@ -896,7 +893,7 @@ jobs:
         run: terraform -chdir=gob/database destroy -auto-approve -var-file=${{ env.TF_VAR_FILE }}
 
   # ---------------------------------------------------------------------------
-  # Layer 1: Networking — Plan -destroy + Approval + Destroy
+  # Layer 1: Networking — Plan -destroy + Destroy
   # ---------------------------------------------------------------------------
   networking-destroy-plan:
     name: "Networking (destroy plan)"
