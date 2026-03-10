@@ -26,11 +26,6 @@ on:
         required: false
         type: boolean
         default: false
-      layer_identity:
-        description: "Layer: Identity"
-        required: false
-        type: boolean
-        default: false
       deploy_app:
         description: "Deploy: Online Boutique (Helm)"
         required: false
@@ -66,7 +61,6 @@ jobs:
       run_networking: ${{ steps.resolve.outputs.run_networking }}
       run_database: ${{ steps.resolve.outputs.run_database }}
       run_compute: ${{ steps.resolve.outputs.run_compute }}
-      run_identity: ${{ steps.resolve.outputs.run_identity }}
       run_deploy_app: ${{ steps.resolve.outputs.run_deploy_app }}
       execution_order: ${{ steps.resolve.outputs.execution_order }}
     steps:
@@ -80,18 +74,16 @@ jobs:
           echo "  Networking: ${{ inputs.layer_networking }}"
           echo "  Database:   ${{ inputs.layer_database }}"
           echo "  Compute:    ${{ inputs.layer_compute }}"
-          echo "  Identity:   ${{ inputs.layer_identity }}"
           echo "============================================="
           echo ""
 
           NETWORKING="${{ inputs.layer_networking }}"
           DATABASE="${{ inputs.layer_database }}"
           COMPUTE="${{ inputs.layer_compute }}"
-          IDENTITY="${{ inputs.layer_identity }}"
           DEPLOY_APP="${{ inputs.deploy_app }}"
 
           # If nothing was selected, fail early
-          if [[ "$NETWORKING" == "false" && "$DATABASE" == "false" && "$COMPUTE" == "false" && "$IDENTITY" == "false" && "$DEPLOY_APP" == "false" ]]; then
+          if [[ "$NETWORKING" == "false" && "$DATABASE" == "false" && "$COMPUTE" == "false" && "$DEPLOY_APP" == "false" ]]; then
             echo "::error::No layers selected. Please select at least one layer."
             exit 1
           fi
@@ -103,10 +95,6 @@ jobs:
             : # no-op
           else
             # Apply / Plan direction: auto-add required base layers
-            if [[ "$IDENTITY" == "true" && "$DATABASE" == "false" ]]; then
-              DATABASE="true"
-              AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added DATABASE (required by identity)\n"
-            fi
             if [[ "$COMPUTE" == "true" && "$DATABASE" == "false" ]]; then
               DATABASE="true"
               AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added DATABASE (required by compute)\n"
@@ -116,11 +104,11 @@ jobs:
               AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added NETWORKING (required by database)\n"
             fi
 
-            # deploy-app requires identity + compute
+            # deploy-app requires database + compute
             if [[ "$DEPLOY_APP" == "true" ]]; then
-              if [[ "$IDENTITY" == "false" ]]; then
-                IDENTITY="true"
-                AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added IDENTITY (required by deploy-app)\n"
+              if [[ "$DATABASE" == "false" ]]; then
+                DATABASE="true"
+                AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added DATABASE (required by deploy-app)\n"
               fi
               if [[ "$COMPUTE" == "false" ]]; then
                 COMPUTE="true"
@@ -129,10 +117,6 @@ jobs:
             fi
 
             # Re-run base dependency resolution after deploy-app additions
-            if [[ "$IDENTITY" == "true" && "$DATABASE" == "false" ]]; then
-              DATABASE="true"
-              AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added DATABASE (required by identity)\n"
-            fi
             if [[ "$COMPUTE" == "true" && "$DATABASE" == "false" ]]; then
               DATABASE="true"
               AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added DATABASE (required by compute)\n"
@@ -147,7 +131,6 @@ jobs:
           if [[ "${{ inputs.action }}" == "destroy" ]]; then
             ORDER=""
             [[ "$DEPLOY_APP" == "true" ]] && ORDER="${ORDER}destroy-app → "
-            [[ "$IDENTITY" == "true" ]] && ORDER="${ORDER}identity → "
             [[ "$COMPUTE" == "true" ]] && ORDER="${ORDER}compute → "
             [[ "$DATABASE" == "true" ]] && ORDER="${ORDER}database → "
             [[ "$NETWORKING" == "true" ]] && ORDER="${ORDER}networking → "
@@ -157,7 +140,6 @@ jobs:
             [[ "$NETWORKING" == "true" ]] && ORDER="${ORDER}networking → "
             [[ "$DATABASE" == "true" ]] && ORDER="${ORDER}database → "
             [[ "$COMPUTE" == "true" ]] && ORDER="${ORDER}compute → "
-            [[ "$IDENTITY" == "true" ]] && ORDER="${ORDER}identity → "
             [[ "$DEPLOY_APP" == "true" ]] && ORDER="${ORDER}deploy-app → "
             ORDER="${ORDER%% → }"
           fi
@@ -181,14 +163,12 @@ jobs:
           echo "  Networking: ${NETWORKING}"
           echo "  Database:   ${DATABASE}"
           echo "  Compute:    ${COMPUTE}"
-          echo "  Identity:   ${IDENTITY}"
           echo "  Deploy App: ${DEPLOY_APP}"
           echo "============================================="
 
           echo "run_networking=${NETWORKING}" >> "$GITHUB_OUTPUT"
           echo "run_database=${DATABASE}" >> "$GITHUB_OUTPUT"
           echo "run_compute=${COMPUTE}" >> "$GITHUB_OUTPUT"
-          echo "run_identity=${IDENTITY}" >> "$GITHUB_OUTPUT"
           echo "run_deploy_app=${DEPLOY_APP}" >> "$GITHUB_OUTPUT"
           echo "execution_order=${ORDER}" >> "$GITHUB_OUTPUT"
 
@@ -211,7 +191,6 @@ jobs:
           | Networking | ${{ steps.resolve.outputs.run_networking == 'true' && '✅ Selected' || '⏭️ Skipped' }} |
           | Database | ${{ steps.resolve.outputs.run_database == 'true' && '✅ Selected' || '⏭️ Skipped' }} |
           | Compute | ${{ steps.resolve.outputs.run_compute == 'true' && '✅ Selected' || '⏭️ Skipped' }} |
-          | Identity | ${{ steps.resolve.outputs.run_identity == 'true' && '✅ Selected' || '⏭️ Skipped' }} |
           | Deploy App | ${{ steps.resolve.outputs.run_deploy_app == 'true' && '✅ Selected' || '⏭️ Skipped' }} |
           EOF
 
@@ -289,32 +268,8 @@ jobs:
       - name: Terraform Plan
         run: terraform -chdir=gob/compute plan -var-file=${{ env.TF_VAR_FILE }}
 
-  identity-plan:
-    name: "Identity (plan)"
-    needs: [resolve, database-plan]
-    if: |
-      always() &&
-      needs.resolve.outputs.run_identity == 'true' &&
-      inputs.action == 'plan' &&
-      (needs.database-plan.result == 'success' || needs.database-plan.result == 'skipped')
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.client }}-${{ inputs.env_name }}
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
-        with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ secrets.SERVICE_ACCOUNT }}
-      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - name: Terraform Init
-        run: terraform -chdir=gob/identity init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/identity"
-      - name: Terraform Plan
-        run: terraform -chdir=gob/identity plan -var-file=${{ env.TF_VAR_FILE }}
-
   # ===========================================================================
-  # APPLY (action == apply): networking → database → compute → identity → app
+  # APPLY (action == apply): networking → database → compute → app
   # ===========================================================================
 
   networking-apply:
@@ -387,38 +342,14 @@ jobs:
       - name: Terraform Apply
         run: terraform -chdir=gob/compute apply -auto-approve -var-file=${{ env.TF_VAR_FILE }}
 
-  identity-apply:
-    name: "Identity (apply)"
-    needs: [resolve, database-apply]
-    if: |
-      always() &&
-      needs.resolve.outputs.run_identity == 'true' &&
-      inputs.action == 'apply' &&
-      (needs.database-apply.result == 'success' || needs.database-apply.result == 'skipped')
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.client }}-${{ inputs.env_name }}
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
-        with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ secrets.SERVICE_ACCOUNT }}
-      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - name: Terraform Init
-        run: terraform -chdir=gob/identity init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/identity"
-      - name: Terraform Apply
-        run: terraform -chdir=gob/identity apply -auto-approve -var-file=${{ env.TF_VAR_FILE }}
-
   deploy-app:
     name: "Deploy Online Boutique (Helm)"
-    needs: [resolve, identity-apply, compute-apply]
+    needs: [resolve, database-apply, compute-apply]
     if: |
       always() &&
       needs.resolve.outputs.run_deploy_app == 'true' &&
       inputs.action == 'apply' &&
-      (needs.identity-apply.result == 'success' || needs.identity-apply.result == 'skipped') &&
+      (needs.database-apply.result == 'success' || needs.database-apply.result == 'skipped') &&
       (needs.compute-apply.result == 'success' || needs.compute-apply.result == 'skipped')
     runs-on: ubuntu-latest
     environment: ${{ inputs.client }}-${{ inputs.env_name }}
@@ -479,7 +410,7 @@ jobs:
           kubectl get httproute -n boutique
 
   # ===========================================================================
-  # DESTROY (action == destroy): app → identity → compute → database → networking
+  # DESTROY (action == destroy): app → compute → database → networking
   # ===========================================================================
 
   destroy-app:
@@ -516,38 +447,14 @@ jobs:
           helm uninstall online-boutique --namespace boutique --wait --timeout 3m || true
           kubectl delete namespace boutique --timeout=60s || true
 
-  identity-destroy:
-    name: "Identity (destroy)"
-    needs: [resolve, destroy-app]
-    if: |
-      always() &&
-      needs.resolve.outputs.run_identity == 'true' &&
-      inputs.action == 'destroy' &&
-      (needs.destroy-app.result == 'success' || needs.destroy-app.result == 'skipped')
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.client }}-${{ inputs.env_name }}
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
-        with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ secrets.SERVICE_ACCOUNT }}
-      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - name: Terraform Init
-        run: terraform -chdir=gob/identity init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/identity"
-      - name: Terraform Destroy
-        run: terraform -chdir=gob/identity destroy -auto-approve -var-file=${{ env.TF_VAR_FILE }}
-
   compute-destroy:
     name: "Compute (destroy)"
-    needs: [resolve, identity-destroy]
+    needs: [resolve, destroy-app]
     if: |
       always() &&
       needs.resolve.outputs.run_compute == 'true' &&
       inputs.action == 'destroy' &&
-      (needs.identity-destroy.result == 'success' || needs.identity-destroy.result == 'skipped')
+      (needs.destroy-app.result == 'success' || needs.destroy-app.result == 'skipped')
     runs-on: ubuntu-latest
     environment: ${{ inputs.client }}-${{ inputs.env_name }}
     steps:

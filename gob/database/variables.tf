@@ -72,3 +72,17 @@ variable "service_accounts" {
   }))
   default = {}
 }
+
+# =============================================================================
+# Workload Identity Bindings
+# =============================================================================
+
+variable "wi_bindings" {
+  description = "Map of Workload Identity bindings. Key = binding name suffix."
+  type = map(object({
+    gsa_key       = string
+    k8s_namespace = optional(string, "default")
+    ksa_name      = string
+  }))
+  default = {}
+}

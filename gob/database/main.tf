@@ -50,3 +50,19 @@ module "service_accounts" {
   description  = each.value.description
   roles        = each.value.roles
 }
+
+# =============================================================================
+# Workload Identity Bindings (KSA -> GSA)
+# =============================================================================
+
+module "wi_bindings" {
+  for_each = var.wi_bindings
+  source   = "../../modules/wi_binding"
+
+  gsa_name      = module.service_accounts[each.value.gsa_key].name
+  project_id    = var.project_id
+  k8s_namespace = each.value.k8s_namespace
+  ksa_name      = each.value.ksa_name
+
+  depends_on = [module.service_accounts]
+}

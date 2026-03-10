@@ -46,3 +46,15 @@ service_accounts = {
     roles        = ["roles/cloudsql.client"]
   }
 }
+
+# =============================================================================
+# Workload Identity Bindings
+# =============================================================================
+
+wi_bindings = {
+  "sql-proxy" = {
+    gsa_key       = "btq-sql"
+    k8s_namespace = "boutique"
+    ksa_name      = "boutique-sql-proxy"
+  }
+}

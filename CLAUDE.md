@@ -91,18 +91,6 @@ GKE_PoC/
 │   │   └── tfvars/
 │   │       └── orel/
 │   │           └── dev.tfvars       # orel dev configuration
-│   ├── identity/                    # Layer 5
-│   │   ├── main.tf                  # Workload Identity bindings (KSA → GSA)
-│   │   ├── variables.tf
-│   │   ├── outputs.tf
-│   │   ├── locals.tf
-│   │   ├── data.tf                  # terraform_remote_state from database
-│   │   ├── providers.tf
-│   │   ├── backend.tf               # Dynamic - no hardcoded prefix
-│   │   ├── versions.tf
-│   │   └── tfvars/
-│   │       └── orel/
-│   │           └── dev.tfvars       # orel dev configuration
 │   └── automation/                  # Layer 4
 │       ├── main.tf                  # WIF pools, service accounts, IAM bindings
 │       ├── variables.tf
@@ -174,12 +162,6 @@ terraform -chdir=gob/compute validate
 terraform -chdir=gob/compute plan -var-file=tfvars/orel/dev.tfvars
 terraform -chdir=gob/compute apply -var-file=tfvars/orel/dev.tfvars
 
-# --- Identity Layer (requires database to be applied first) ---
-terraform -chdir=gob/identity init -backend-config="prefix=orel/dev/identity"
-terraform -chdir=gob/identity validate
-terraform -chdir=gob/identity plan -var-file=tfvars/orel/dev.tfvars
-terraform -chdir=gob/identity apply -var-file=tfvars/orel/dev.tfvars
-
 # --- Automation Layer (one-time manual apply for WIF + CI/CD SA) ---
 terraform -chdir=gob/automation init -backend-config="prefix=orel/dev/automation"
 terraform -chdir=gob/automation validate
@@ -187,7 +169,6 @@ terraform -chdir=gob/automation plan -var-file=tfvars/orel/dev.tfvars
 terraform -chdir=gob/automation apply -var-file=tfvars/orel/dev.tfvars
 
 # --- Destroy (reverse order!) ---
-terraform -chdir=gob/identity destroy -var-file=tfvars/orel/dev.tfvars
 terraform -chdir=gob/compute destroy -var-file=tfvars/orel/dev.tfvars
 terraform -chdir=gob/database destroy -var-file=tfvars/orel/dev.tfvars
 terraform -chdir=gob/networking destroy -var-file=tfvars/orel/dev.tfvars
@@ -202,8 +183,6 @@ terraform -chdir=gob/database init '-backend-config=prefix=orel/dev/database'
 terraform -chdir=gob/database plan '-var-file=tfvars/orel/dev.tfvars'
 terraform -chdir=gob/compute init '-backend-config=prefix=orel/dev/compute'
 terraform -chdir=gob/compute plan '-var-file=tfvars/orel/dev.tfvars'
-terraform -chdir=gob/identity init '-backend-config=prefix=orel/dev/identity'
-terraform -chdir=gob/identity plan '-var-file=tfvars/orel/dev.tfvars'
 terraform -chdir=gob/automation init '-backend-config=prefix=orel/dev/automation'
 terraform -chdir=gob/automation plan '-var-file=tfvars/orel/dev.tfvars'
 ```
@@ -214,7 +193,6 @@ terraform -chdir=gob/automation plan '-var-file=tfvars/orel/dev.tfvars'
 terraform -chdir=gob/networking init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/networking"
 terraform -chdir=gob/database init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/database"
 terraform -chdir=gob/compute init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/compute"
-terraform -chdir=gob/identity init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/identity"
 terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_CLIENT/OTHER_ENV/automation"
 ```
 
@@ -234,7 +212,7 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 2. **Data Layer** - code ready, validated, NOT yet applied
 3. **Compute Layer** - code ready, validated, NOT yet applied
 4. **Automation & CI/CD** - APPLIED
-5. **Identity & Ingress** - code ready, validated, NOT yet applied
+5. **Identity & Ingress** - MERGED into database layer (WI bindings live in database layer now)
 6. **Application Deployment** - CURRENT (code ready, NOT yet applied)
 7. Monitoring & Polish - Cloud Monitoring, optimization, resilience testing
 
@@ -277,13 +255,14 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 - Reads networking outputs via `terraform_remote_state`
 - Design doc: `docs/plans/2026-03-02-data-layer-design.md`
 
-**Database resources (~5 total):**
+**Database resources (~6 total):**
 | Resource | Name |
 |----------|------|
 | Cloud SQL Instance | orel-gob-dev-euw1-sql-main (PostgreSQL 15, db-f1-micro) |
 | SQL Database | boutique |
 | Service Account | orel-gob-dev-euw1-sa-btq-sql |
 | IAM Binding | roles/cloudsql.client → GSA |
+| WI Binding | KSA `boutique/boutique-sql-proxy` → GSA `orel-gob-dev-euw1-sa-btq-sql` |
 | API | sqladmin.googleapis.com |
 
 ### Stage 3: Compute Layer - CODE READY, NOT APPLIED
@@ -305,7 +284,7 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 
 **What's next:**
 1. Configure GitHub Secrets (WIF_PROVIDER, SERVICE_ACCOUNT, GCP_PROJECT_ID)
-2. Push to GitHub and use workflows to deploy all layers (networking → database → compute → identity)
+2. Push to GitHub and use workflows to deploy all layers (networking → database → compute)
 3. Verify in GCP Console (checklists below)
 4. Start Stage 6: Application Deployment
 
@@ -337,11 +316,11 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 |---------|----------|
 | Trigger | workflow_dispatch |
 | Actions | plan, apply, destroy |
-| Layer Selection | Boolean checkboxes per layer (networking, database, compute, identity) |
+| Layer Selection | Boolean checkboxes per layer (networking, database, compute) |
 | Dependency Resolution | Auto-adds required/dependent layers with visible warnings |
 | Fail-Fast | If a layer fails, subsequent layers are skipped |
-| Apply Order | networking → database → compute → identity |
-| Destroy Order | identity → compute → database → networking |
+| Apply Order | networking → database → compute |
+| Destroy Order | compute → database → networking |
 
 **GitHub Secrets (after automation apply):**
 | Secret | Value |
@@ -350,27 +329,10 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 | `WIF_PROVIDER` | `terraform output wif_provider_names` |
 | `WIF_SERVICE_ACCOUNT` | `terraform output service_account_emails` |
 
-### Stage 5: Identity & Ingress - CODE READY, NOT APPLIED
+### Stage 5: Identity & Ingress - MERGED INTO DATABASE LAYER
 
-**What's done:**
-- 2 new per-resource modules (static_ip, wi_binding)
-- Static IP added to `gob/networking/` layer (+1 resource)
-- New layer code at `gob/identity/` with dynamic backend
-- Client config at `gob/identity/tfvars/orel/dev.tfvars`
-- `terraform validate` successful
-- Reads database outputs via `terraform_remote_state`
-- Workflow updated with identity layer (apply/destroy/dependency resolution)
-- Design doc: `docs/plans/2026-03-08-identity-ingress-design.md`
-
-**Identity resources (1 total):**
-| Resource | Name |
-|----------|------|
-| WI Binding | KSA `boutique/boutique-sql-proxy` → GSA `orel-gob-dev-euw1-sa-btq-sql` |
-
-**Networking addition (+1, now 16 total):**
-| Resource | Name |
-|----------|------|
-| Static IP | orel-gob-dev-euw1-ip-ingress (Regional External, STANDARD tier) |
+WI binding (KSA→GSA) merged into `gob/database/` layer. Static IP remains in networking.
+The `gob/identity/` layer has been removed. Design doc: `docs/plans/2026-03-08-identity-ingress-design.md`
 
 ### Stage 6: Application Deployment - CODE READY, NOT APPLIED
 
@@ -414,6 +376,7 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 4. **SQL > Flags** - `cloudsql.iam_authentication = on`
 5. **IAM > Service Accounts** - `orel-gob-dev-euw1-sa-btq-sql@orel-bh-sandbox.iam.gserviceaccount.com`
 6. **IAM > Permissions** - GSA has `roles/cloudsql.client`
+7. **IAM > Service Accounts > orel-gob-dev-euw1-sa-btq-sql > Permissions** — `roles/iam.workloadIdentityUser` bound to `serviceAccount:orel-bh-sandbox.svc.id.goog[boutique/boutique-sql-proxy]`
 
 ### GCP Console Verification Checklist - Compute (after apply):
 1. **Kubernetes Engine > Clusters** — `orel-gob-dev-euw1-gke-main` exists, Zonal (europe-west1-b), Standard mode
@@ -426,18 +389,15 @@ terraform -chdir=gob/automation init -reconfigure -backend-config="prefix=OTHER_
 1. **IAM > Workload Identity Pools** - `orel-gob-dev-euw1-wip-github` exists with OIDC provider
 2. **WIF Provider** - Issuer: `https://token.actions.githubusercontent.com`, Attribute condition set
 3. **IAM > Service Accounts** - `orel-gob-dev-euw1-sa-cicd@orel-bh-sandbox.iam.gserviceaccount.com`
-4. **IAM > Permissions** - GSA has `roles/editor` and `roles/servicenetworking.networksAdmin`
+4. **IAM > Permissions** - GSA has `roles/editor`, `roles/servicenetworking.networksAdmin`, and `roles/iam.serviceAccountAdmin`
 5. **GitHub Actions** - Run workflow with `plan` action to verify WIF auth works
 
-### GCP Console Verification Checklist - Identity (after apply):
-1. **IAM > Service Accounts > orel-gob-dev-euw1-sa-btq-sql > Permissions** — `roles/iam.workloadIdentityUser` bound to `serviceAccount:orel-bh-sandbox.svc.id.goog[boutique/boutique-sql-proxy]`
-
 ### GitHub Actions Verification Checklist (after secrets configured):
-1. **Plan all** - Run `terraform.yml` with action=plan, all layers checked → all 4 layers plan successfully
+1. **Plan all** - Run `terraform.yml` with action=plan, all layers checked → all 3 layers plan successfully
 2. **Apply all** - Run `terraform.yml` with action=apply, all layers checked → all layers created
 3. **Destroy all** - Run `terraform.yml` with action=destroy, all layers checked → all layers destroyed in reverse order
-4. **Single layer test** - Run with only identity checked → resolve job auto-adds database + networking
-5. **Fail-fast test** - If networking fails, database, compute, and identity are skipped
+4. **Single layer test** - Run with only compute checked → resolve job auto-adds database + networking
+5. **Fail-fast test** - If networking fails, database and compute are skipped
 6. **Dependency visibility** - Check resolve job logs and Step Summary for auto-added layers
 
 ## Design Documents
