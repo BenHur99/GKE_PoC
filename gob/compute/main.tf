@@ -31,6 +31,7 @@ module "gke_clusters" {
   release_channel            = each.value.release_channel
   workload_identity_enabled  = each.value.workload_identity_enabled
   deletion_protection        = each.value.deletion_protection
+  gateway_api_enabled        = each.value.gateway_api_enabled
   master_authorized_networks = each.value.master_authorized_networks
 
   depends_on = [module.apis]

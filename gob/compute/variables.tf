@@ -53,6 +53,7 @@ variable "gke_clusters" {
     release_channel               = optional(string, "REGULAR")
     workload_identity_enabled     = optional(bool, true)
     deletion_protection           = optional(bool, false)
+    gateway_api_enabled           = optional(bool, true)
     master_authorized_networks    = optional(map(object({
       cidr_block = string
     })), {})

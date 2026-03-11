@@ -64,3 +64,9 @@ variable "deletion_protection" {
   type        = bool
   default     = false
 }
+
+variable "gateway_api_enabled" {
+  description = "Enable GKE Gateway API (installs gateway.networking.k8s.io CRDs)"
+  type        = bool
+  default     = true
+}

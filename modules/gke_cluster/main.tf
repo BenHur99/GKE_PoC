@@ -51,4 +51,12 @@ resource "google_container_cluster" "this" {
   release_channel {
     channel = var.release_channel
   }
+
+  # Gateway API — enables gateway.networking.k8s.io CRDs managed by GKE
+  dynamic "gateway_api_config" {
+    for_each = var.gateway_api_enabled ? [1] : []
+    content {
+      channel = "CHANNEL_STANDARD"
+    }
+  }
 }
