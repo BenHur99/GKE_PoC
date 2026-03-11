@@ -4,10 +4,10 @@ namespace: boutique
 images:
   frontend:
     repository: us-central1-docker.pkg.dev/google-samples/microservices-demo/frontend
-    tag: v0.10.4
+    tag: v0.8.0
   cartservice:
     repository: us-central1-docker.pkg.dev/google-samples/microservices-demo/cartservice
-    tag: v0.10.4
+    tag: v0.8.0
   redis:
     repository: redis
     tag: alpine
