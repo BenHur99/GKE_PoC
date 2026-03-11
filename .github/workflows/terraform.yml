@@ -406,9 +406,9 @@ jobs:
           version: v3.14.0
       - name: Helm Deploy
         run: |
+          kubectl create namespace boutique --dry-run=client -o yaml | kubectl apply -f -
           helm upgrade --install online-boutique ./helm/online-boutique \
             --namespace boutique \
-            --create-namespace \
             --set gateway.staticIpName=${{ steps.tf-outputs.outputs.static_ip_name }} \
             --set sqlProxy.instanceConnectionName=${{ steps.tf-outputs.outputs.sql_connection }} \
             --set serviceAccount.gsaEmail=${{ steps.tf-outputs.outputs.gsa_email }} \
