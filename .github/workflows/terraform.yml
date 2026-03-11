@@ -94,37 +94,45 @@ jobs:
             # Destroy direction: destroy only what was explicitly selected.
             : # no-op
           else
-            # Apply / Plan direction: auto-add required base layers
-            if [[ "$COMPUTE" == "true" && "$DATABASE" == "false" ]]; then
-              DATABASE="true"
-              AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added DATABASE (required by compute)\n"
-            fi
-            if [[ "$DATABASE" == "true" && "$NETWORKING" == "false" ]]; then
-              NETWORKING="true"
-              AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added NETWORKING (required by database)\n"
-            fi
+            # Apply / Plan direction: auto-add required base layers only when
+            # infra layers are explicitly selected (not when deploy_app is alone).
+            INFRA_SELECTED="false"
+            [[ "$NETWORKING" == "true" || "$DATABASE" == "true" || "$COMPUTE" == "true" ]] && INFRA_SELECTED="true"
 
-            # deploy-app requires database + compute
-            if [[ "$DEPLOY_APP" == "true" ]]; then
-              if [[ "$DATABASE" == "false" ]]; then
+            if [[ "$INFRA_SELECTED" == "true" ]]; then
+              # Auto-add required base layers for infra
+              if [[ "$COMPUTE" == "true" && "$DATABASE" == "false" ]]; then
                 DATABASE="true"
-                AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added DATABASE (required by deploy-app)\n"
+                AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added DATABASE (required by compute)\n"
               fi
-              if [[ "$COMPUTE" == "false" ]]; then
-                COMPUTE="true"
-                AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added COMPUTE (required by deploy-app)\n"
+              if [[ "$DATABASE" == "true" && "$NETWORKING" == "false" ]]; then
+                NETWORKING="true"
+                AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added NETWORKING (required by database)\n"
               fi
-            fi
 
-            # Re-run base dependency resolution after deploy-app additions
-            if [[ "$COMPUTE" == "true" && "$DATABASE" == "false" ]]; then
-              DATABASE="true"
-              AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added DATABASE (required by compute)\n"
+              # If deploy_app is also selected together with infra, also add its deps
+              if [[ "$DEPLOY_APP" == "true" ]]; then
+                if [[ "$COMPUTE" == "false" ]]; then
+                  COMPUTE="true"
+                  AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added COMPUTE (required by deploy-app)\n"
+                fi
+                if [[ "$DATABASE" == "false" ]]; then
+                  DATABASE="true"
+                  AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added DATABASE (required by deploy-app)\n"
+                fi
+                # Re-run base resolution after additions
+                if [[ "$COMPUTE" == "true" && "$DATABASE" == "false" ]]; then
+                  DATABASE="true"
+                  AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added DATABASE (required by compute)\n"
+                fi
+                if [[ "$DATABASE" == "true" && "$NETWORKING" == "false" ]]; then
+                  NETWORKING="true"
+                  AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added NETWORKING (required by database)\n"
+                fi
+              fi
             fi
-            if [[ "$DATABASE" == "true" && "$NETWORKING" == "false" ]]; then
-              NETWORKING="true"
-              AUTO_ADDS="${AUTO_ADDS}  ⚠️  Auto-added NETWORKING (required by database)\n"
-            fi
+            # If only deploy_app is selected (no infra layers): run deploy-app only,
+            # assuming infrastructure already exists in Terraform state.
           fi
 
           # Build execution order string for display
