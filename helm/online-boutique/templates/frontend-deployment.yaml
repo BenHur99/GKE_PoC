@@ -40,8 +40,6 @@ spec:
               value: "checkoutservice:5050"
             - name: AD_SERVICE_ADDR
               value: "adservice:9555"
-            - name: SHOPPING_ASSISTANT_SERVICE_ADDR
-              value: ""
             - name: ENABLE_PROFILER
               value: "0"
           readinessProbe:
