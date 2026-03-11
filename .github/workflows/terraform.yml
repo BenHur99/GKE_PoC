@@ -373,13 +373,10 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
-      - name: Install gke-gcloud-auth-plugin
-        run: |
-          sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-plugin
-          export USE_GKE_GCLOUD_AUTH_PLUGIN=True
+      - uses: google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a # v2.1.2
+        with:
+          install_components: gke-gcloud-auth-plugin
       - name: Get GKE Credentials
-        env:
-          USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
         run: |
           CLUSTER_NAME=$(cd gob/compute && terraform init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/compute" > /dev/null 2>&1 && terraform output -json cluster_names 2>/dev/null | jq -r '.main // empty')
           if [[ -z "$CLUSTER_NAME" || "$CLUSTER_NAME" == "null" ]]; then
@@ -452,11 +449,10 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
-      - name: Install gke-gcloud-auth-plugin
-        run: sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-plugin
+      - uses: google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a # v2.1.2
+        with:
+          install_components: gke-gcloud-auth-plugin
       - name: Get GKE Credentials
-        env:
-          USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
         run: |
           CLUSTER_NAME=$(cd gob/compute && terraform init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/compute" > /dev/null 2>&1 && terraform output -json cluster_names 2>/dev/null | jq -r '.main // empty')
           if [[ -z "$CLUSTER_NAME" || "$CLUSTER_NAME" == "null" ]]; then
