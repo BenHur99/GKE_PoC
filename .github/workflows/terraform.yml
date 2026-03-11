@@ -367,7 +367,12 @@ jobs:
         run: gcloud components install gke-gcloud-auth-plugin --quiet 2>/dev/null || true
       - name: Get GKE Credentials
         run: |
-          CLUSTER_NAME=$(cd gob/compute && terraform init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/compute" > /dev/null 2>&1 && terraform output -json cluster_names | jq -r '.main')
+          CLUSTER_NAME=$(cd gob/compute && terraform init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/compute" > /dev/null 2>&1 && terraform output -json cluster_names 2>/dev/null | jq -r '.main // empty')
+          if [[ -z "$CLUSTER_NAME" || "$CLUSTER_NAME" == "null" ]]; then
+            echo "::error::Could not read cluster name from Terraform state. Make sure the compute layer has been applied."
+            exit 1
+          fi
+          echo "Connecting to cluster: $CLUSTER_NAME"
           gcloud container clusters get-credentials "$CLUSTER_NAME" \
             --zone europe-west1-b \
             --project orel-bh-sandbox
@@ -435,7 +440,12 @@ jobs:
         run: gcloud components install gke-gcloud-auth-plugin --quiet 2>/dev/null || true
       - name: Get GKE Credentials
         run: |
-          CLUSTER_NAME=$(cd gob/compute && terraform init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/compute" > /dev/null 2>&1 && terraform output -json cluster_names | jq -r '.main')
+          CLUSTER_NAME=$(cd gob/compute && terraform init -backend-config="prefix=${{ inputs.client }}/${{ inputs.env_name }}/compute" > /dev/null 2>&1 && terraform output -json cluster_names 2>/dev/null | jq -r '.main // empty')
+          if [[ -z "$CLUSTER_NAME" || "$CLUSTER_NAME" == "null" ]]; then
+            echo "::error::Could not read cluster name from Terraform state. Make sure the compute layer has been applied."
+            exit 1
+          fi
+          echo "Connecting to cluster: $CLUSTER_NAME"
           gcloud container clusters get-credentials "$CLUSTER_NAME" \
             --zone europe-west1-b \
             --project orel-bh-sandbox
