@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: currencyservice
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: currencyservice
+spec:
+  type: ClusterIP
+  selector:
+    app: currencyservice
+  ports:
+    - port: 7000
+      targetPort: 7000
+      protocol: TCP
+      name: grpc

@@ -1,19 +1,16 @@
 namespace: boutique
 
 # --- Images ---
+# All microservices share the same repository base; image name = service name
 images:
-  frontend:
-    repository: us-central1-docker.pkg.dev/google-samples/microservices-demo/frontend
-    tag: v0.8.0
-  cartservice:
-    repository: us-central1-docker.pkg.dev/google-samples/microservices-demo/cartservice
-    tag: v0.8.0
-  redis:
-    repository: redis
-    tag: alpine
+  repository: us-central1-docker.pkg.dev/google-samples/microservices-demo
+  tag: v0.8.0
   sqlProxy:
     repository: gcr.io/cloud-sql-connectors/cloud-sql-proxy
     tag: "2"
+  redis:
+    repository: redis
+    tag: alpine
 
 # --- Service Account (KSA with WI annotation) ---
 serviceAccount:

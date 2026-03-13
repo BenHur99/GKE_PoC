@@ -20,7 +20,7 @@ spec:
       terminationGracePeriodSeconds: 5
       containers:
         - name: frontend
-          image: "{{ .Values.images.frontend.repository }}:{{ .Values.images.frontend.tag }}"
+          image: "{{ .Values.images.repository }}/frontend:{{ .Values.images.tag }}"
           ports:
             - containerPort: {{ .Values.frontend.port }}
           env:

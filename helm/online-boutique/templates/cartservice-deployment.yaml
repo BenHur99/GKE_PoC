@@ -21,7 +21,7 @@ spec:
       containers:
         # --- Main container: cartservice (talks to Redis) ---
         - name: cartservice
-          image: "{{ .Values.images.cartservice.repository }}:{{ .Values.images.cartservice.tag }}"
+          image: "{{ .Values.images.repository }}/cartservice:{{ .Values.images.tag }}"
           ports:
             - containerPort: {{ .Values.cartservice.port }}
           env:
