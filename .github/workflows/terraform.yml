@@ -406,7 +406,13 @@ jobs:
           version: v3.14.0
       - name: Helm Deploy
         run: |
+          # Adopt existing namespace into Helm management (idempotent)
           kubectl create namespace boutique --dry-run=client -o yaml | kubectl apply -f -
+          kubectl label namespace boutique app.kubernetes.io/managed-by=Helm --overwrite
+          kubectl annotate namespace boutique \
+            meta.helm.sh/release-name=online-boutique \
+            meta.helm.sh/release-namespace=boutique \
+            --overwrite
           helm upgrade --install online-boutique ./helm/online-boutique \
             --namespace boutique \
             --set gateway.staticIpName=${{ steps.tf-outputs.outputs.static_ip_name }} \
