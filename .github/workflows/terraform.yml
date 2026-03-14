@@ -430,6 +430,10 @@ jobs:
           kubectl get gateway -n boutique
           echo "=== HTTPRoute ==="
           kubectl get httproute -n boutique
+          echo ""
+          echo "=== Application URL ==="
+          GATEWAY_IP=$(kubectl get gateway frontend -n boutique -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "pending...")
+          echo "http://${GATEWAY_IP}"
 
   # ===========================================================================
   # DESTROY (action == destroy): app → compute → database → networking
