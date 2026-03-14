@@ -3,8 +3,8 @@ namespace: boutique
 # --- Images ---
 # All microservices share the same repository base; image name = service name
 images:
-  repository: us-central1-docker.pkg.dev/google-samples/microservices-demo
-  tag: v0.8.0
+  repository: gcr.io/google-samples/microservices-demo
+  tag: v0.8.1
   sqlProxy:
     repository: gcr.io/cloud-sql-connectors/cloud-sql-proxy
     tag: "2"
