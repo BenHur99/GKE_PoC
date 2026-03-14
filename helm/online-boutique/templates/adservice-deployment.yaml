@@ -38,8 +38,8 @@ spec:
             periodSeconds: 15
           resources:
             requests:
-              cpu: 200m
-              memory: 180Mi
+              cpu: {{ .Values.adservice.resources.requests.cpu }}
+              memory: {{ .Values.adservice.resources.requests.memory }}
             limits:
-              cpu: 300m
-              memory: 300Mi
+              cpu: {{ .Values.adservice.resources.limits.cpu }}
+              memory: {{ .Values.adservice.resources.limits.memory }}

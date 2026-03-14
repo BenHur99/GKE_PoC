@@ -38,8 +38,8 @@ spec:
             periodSeconds: 15
           resources:
             requests:
-              cpu: 100m
-              memory: 64Mi
+              cpu: {{ .Values.shippingservice.resources.requests.cpu }}
+              memory: {{ .Values.shippingservice.resources.requests.memory }}
             limits:
-              cpu: 200m
-              memory: 128Mi
+              cpu: {{ .Values.shippingservice.resources.limits.cpu }}
+              memory: {{ .Values.shippingservice.resources.limits.memory }}

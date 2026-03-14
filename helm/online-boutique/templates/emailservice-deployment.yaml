@@ -38,8 +38,8 @@ spec:
             periodSeconds: 15
           resources:
             requests:
-              cpu: 100m
-              memory: 64Mi
+              cpu: {{ .Values.emailservice.resources.requests.cpu }}
+              memory: {{ .Values.emailservice.resources.requests.memory }}
             limits:
-              cpu: 200m
-              memory: 128Mi
+              cpu: {{ .Values.emailservice.resources.limits.cpu }}
+              memory: {{ .Values.emailservice.resources.limits.memory }}

@@ -38,8 +38,8 @@ spec:
             periodSeconds: 15
           resources:
             requests:
-              cpu: 100m
-              memory: 64Mi
+              cpu: {{ .Values.paymentservice.resources.requests.cpu }}
+              memory: {{ .Values.paymentservice.resources.requests.memory }}
             limits:
-              cpu: 200m
-              memory: 128Mi
+              cpu: {{ .Values.paymentservice.resources.limits.cpu }}
+              memory: {{ .Values.paymentservice.resources.limits.memory }}

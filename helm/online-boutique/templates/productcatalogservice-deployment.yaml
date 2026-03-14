@@ -38,8 +38,8 @@ spec:
             periodSeconds: 15
           resources:
             requests:
-              cpu: 100m
-              memory: 64Mi
+              cpu: {{ .Values.productcatalogservice.resources.requests.cpu }}
+              memory: {{ .Values.productcatalogservice.resources.requests.memory }}
             limits:
-              cpu: 200m
-              memory: 128Mi
+              cpu: {{ .Values.productcatalogservice.resources.limits.cpu }}
+              memory: {{ .Values.productcatalogservice.resources.limits.memory }}

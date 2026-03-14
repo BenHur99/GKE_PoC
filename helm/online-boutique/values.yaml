@@ -23,7 +23,7 @@ frontend:
   port: 8080
   resources:
     requests:
-      cpu: 100m
+      cpu: 50m
       memory: 64Mi
     limits:
       cpu: 200m
@@ -35,10 +35,10 @@ cartservice:
   port: 7070
   resources:
     requests:
-      cpu: 200m
+      cpu: 50m
       memory: 64Mi
     limits:
-      cpu: 300m
+      cpu: 200m
       memory: 128Mi
 
 # --- Cloud SQL Auth Proxy (sidecar on cartservice) ---
@@ -48,7 +48,7 @@ sqlProxy:
   port: 5432
   resources:
     requests:
-      cpu: 50m
+      cpu: 25m
       memory: 32Mi
     limits:
       cpu: 100m
@@ -60,10 +60,90 @@ redis:
   port: 6379
   resources:
     requests:
-      cpu: 70m
-      memory: 100Mi
+      cpu: 50m
+      memory: 64Mi
     limits:
       cpu: 125m
+      memory: 128Mi
+
+# --- Ad Service ---
+adservice:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# --- Checkout Service ---
+checkoutservice:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# --- Currency Service ---
+currencyservice:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# --- Email Service ---
+emailservice:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# --- Payment Service ---
+paymentservice:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# --- Product Catalog Service ---
+productcatalogservice:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# --- Recommendation Service ---
+recommendationservice:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# --- Shipping Service ---
+shippingservice:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
       memory: 128Mi
 
 # --- Gateway (replaces Ingress) ---

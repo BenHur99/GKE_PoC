@@ -40,8 +40,8 @@ spec:
             periodSeconds: 15
           resources:
             requests:
-              cpu: 100m
-              memory: 220Mi
+              cpu: {{ .Values.recommendationservice.resources.requests.cpu }}
+              memory: {{ .Values.recommendationservice.resources.requests.memory }}
             limits:
-              cpu: 200m
-              memory: 450Mi
+              cpu: {{ .Values.recommendationservice.resources.limits.cpu }}
+              memory: {{ .Values.recommendationservice.resources.limits.memory }}
