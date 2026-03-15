@@ -26,6 +26,8 @@ gke_clusters = {
     zone                   = "europe-west1-b"
     master_ipv4_cidr_block = "172.16.0.0/28"
     release_channel        = "REGULAR"
+    # DEV ONLY: Open to all IPs for ephemeral development environment.
+    # For staging/prod: restrict to office IPs, VPN ranges, and CI/CD runner IPs.
     master_authorized_networks = {
       "allow-all" = {
         cidr_block = "0.0.0.0/0"

@@ -28,7 +28,11 @@ sql_instances = {
     disk_type           = "PD_HDD"
     availability_type   = "ZONAL"
     database_name       = "boutique"
+    # DEV ONLY: Disabled for easy teardown of ephemeral environment.
+    # For staging/prod: set to true to prevent accidental data loss.
     deletion_protection = false
+    # DEV: Backups disabled to save cost on ephemeral environment.
+    # For staging/prod: set backup_enabled = true, backup_start_time = "03:00"
     database_flags = {
       "cloudsql.iam_authentication" = "on"
     }
