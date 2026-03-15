@@ -1,0 +1,103 @@
+# Production environment — full redundancy, strict security
+# Usage: terraform -chdir=gob/networking plan -var-file=tfvars/orel/prod.tfvars
+#
+# IMPORTANT differences from dev:
+# - Separate GCP project (recommended)
+# - Non-overlapping CIDR ranges with dev and staging
+# - PREMIUM network tier for global load balancing
+# - No 0.0.0.0/0 in master_authorized_networks (compute layer)
+# - deletion_protection = true on all stateful resources (database layer)
+# - backup_enabled = true on Cloud SQL (database layer)
+#
+# Copy this file to prod.tfvars and adjust values as needed.
+
+client_name  = "orel"
+product_name = "gob"
+environment  = "prod"
+project_id   = "orel-bh-production"  # Separate project for production
+region       = "europe-west1"
+
+apis = ["compute.googleapis.com", "container.googleapis.com", "servicenetworking.googleapis.com", "sqladmin.googleapis.com"]
+
+vpcs = {
+  "main" = {}
+}
+
+subnets = {
+  "gke" = {
+    vpc_key               = "main"
+    cidr                  = "10.64.0.0/20"
+    purpose               = "PRIVATE"
+    private_google_access = true
+    secondary_ranges = {
+      "pods"     = { cidr = "10.68.0.0/14" }
+      "services" = { cidr = "10.72.0.0/20" }
+    }
+  }
+  "proxy" = {
+    vpc_key = "main"
+    cidr    = "10.64.16.0/23"
+    purpose = "REGIONAL_MANAGED_PROXY"
+    role    = "ACTIVE"
+  }
+}
+
+firewall_rules = {
+  "deny-all-ingress" = {
+    vpc_key       = "main"
+    direction     = "INGRESS"
+    priority      = 65534
+    action        = "deny"
+    protocol      = "all"
+    source_ranges = ["0.0.0.0/0"]
+  }
+  "allow-iap-ssh" = {
+    vpc_key       = "main"
+    direction     = "INGRESS"
+    priority      = 1000
+    action        = "allow"
+    protocol      = "tcp"
+    ports         = ["22"]
+    source_ranges = ["35.235.240.0/20"]
+  }
+  "allow-health-checks" = {
+    vpc_key       = "main"
+    direction     = "INGRESS"
+    priority      = 1000
+    action        = "allow"
+    protocol      = "tcp"
+    ports         = ["80", "443", "8080"]
+    source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
+    target_tags   = ["gke-node"]
+  }
+  "allow-proxy-to-backends" = {
+    vpc_key       = "main"
+    direction     = "INGRESS"
+    priority      = 1000
+    action        = "allow"
+    protocol      = "tcp"
+    ports         = ["80", "443", "8080"]
+    source_ranges = ["10.64.16.0/23"]
+    target_tags   = ["gke-node"]
+  }
+}
+
+cloud_nats = {
+  "main" = {
+    vpc_key = "main"
+  }
+}
+
+psa_connections = {
+  "google-managed" = {
+    vpc_key = "main"
+    cidr    = "10.80.0.0/16"
+  }
+}
+
+static_ips = {
+  "ingress" = {
+    address_type = "EXTERNAL"
+    network_tier = "PREMIUM"  # PREMIUM for production — global load balancing support
+  }
+}
