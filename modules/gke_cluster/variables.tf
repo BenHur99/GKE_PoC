@@ -81,12 +81,6 @@ variable "gateway_api_enabled" {
   default     = true
 }
 
-variable "enable_network_policy" {
-  description = "Enable Kubernetes NetworkPolicy enforcement (Calico)"
-  type        = bool
-  default     = true
-}
-
 variable "enable_shielded_nodes" {
   description = "Enable Shielded GKE Nodes (secure boot, integrity monitoring)"
   type        = bool

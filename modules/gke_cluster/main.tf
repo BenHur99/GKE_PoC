@@ -61,11 +61,6 @@ resource "google_container_cluster" "this" {
     }
   }
 
-  # Network Policy — enables Kubernetes NetworkPolicy enforcement via Calico
-  network_policy {
-    enabled = var.enable_network_policy
-  }
-
   # Shielded Nodes — integrity monitoring and secure boot
   enable_shielded_nodes = var.enable_shielded_nodes
 

@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "WebFetch(domain:docs.cloud.google.com)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(terraform -chdir=gob/compute validate)",
+      "Bash(terraform -chdir=gob/automation validate)"
     ]
   }
 }
