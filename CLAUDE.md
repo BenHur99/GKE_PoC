@@ -24,7 +24,8 @@ One set of `.tf` files per layer under `gob/`. Client/env-specific configuration
 
 Each Terraform module wraps a single GCP resource (or tightly-coupled pair).
 Modules are simple wrappers — they receive a pre-computed `name` variable from the caller.
-The layer's `main.tf` orchestrates modules with `for_each` and constructs names using `naming_prefix`.
+The layer's `main.tf` calls `module "naming"` first, then orchestrates all other modules with `for_each`.
+`naming_prefix` and `common_labels` come from `modules/naming/` — not from layer locals.
 
 ### Naming Convention
 
@@ -96,6 +97,9 @@ terraform -chdir=gob/networking init -reconfigure -backend-config="prefix=OTHER_
 - `.tfvars` files under `gob/*/tfvars/` are tracked in git (non-secret configuration)
 - Secrets go in environment variables or Secret Manager, never in tfvars
 - Use `optional()` with defaults in variable type definitions
+- Add `validation {}` blocks to all variables with constrained values
+- `terraform {}` / `required_providers` goes in `providers.tf` — NOT in `main.tf`
+- All resources that support labels receive `labels = module.naming.common_labels`
 - Commit messages follow conventional commits: `feat()`, `fix()`, `refactor()`, `docs()`, `chore()`
 
 ## Tech Stack
