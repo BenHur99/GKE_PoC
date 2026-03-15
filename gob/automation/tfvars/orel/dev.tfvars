@@ -46,7 +46,17 @@ service_accounts = {
   "cicd" = {
     display_name = "CI/CD GitHub Actions"
     description  = "SA for GitHub Actions WIF-based deployment"
-    roles        = ["roles/editor", "roles/servicenetworking.networksAdmin", "roles/resourcemanager.projectIamAdmin", "roles/iam.serviceAccountAdmin"]
+    # Least-privilege roles for CI/CD pipeline operations.
+    # Each role scoped to what terraform apply/destroy needs.
+    roles = [
+      "roles/container.admin",
+      "roles/compute.admin",
+      "roles/cloudsql.admin",
+      "roles/storage.admin",
+      "roles/servicenetworking.networksAdmin",
+      "roles/resourcemanager.projectIamAdmin",
+      "roles/iam.serviceAccountAdmin"
+    ]
     wif_pool_key = "github"
     github_repo  = "BenHur99/GKE_PoC"
   }
