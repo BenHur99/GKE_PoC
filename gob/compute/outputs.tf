@@ -11,8 +11,9 @@ output "cluster_names" {
 }
 
 output "cluster_endpoints" {
-  description = "Map of cluster key => API endpoint"
+  description = "Map of GKE cluster endpoints"
   value       = { for k, v in module.gke_clusters : k => v.endpoint }
+  sensitive   = true
 }
 
 output "cluster_ca_certificates" {

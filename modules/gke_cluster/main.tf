@@ -60,4 +60,23 @@ resource "google_container_cluster" "this" {
       channel = "CHANNEL_STANDARD"
     }
   }
+
+  # Network Policy — enables Kubernetes NetworkPolicy enforcement via Calico
+  network_policy {
+    enabled = var.enable_network_policy
+  }
+
+  # Shielded Nodes — integrity monitoring and secure boot
+  enable_shielded_nodes = var.enable_shielded_nodes
+
+  # Logging and Monitoring
+  logging_service    = var.logging_service
+  monitoring_service = var.monitoring_service
+
+  # Maintenance Window — controls when GKE can perform automatic maintenance
+  maintenance_policy {
+    daily_maintenance_window {
+      start_time = var.maintenance_window_start_time
+    }
+  }
 }

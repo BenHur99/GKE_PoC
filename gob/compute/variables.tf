@@ -57,6 +57,11 @@ variable "gke_clusters" {
     master_authorized_networks    = optional(map(object({
       cidr_block = string
     })), {})
+    enable_network_policy           = optional(bool, true)
+    enable_shielded_nodes           = optional(bool, true)
+    logging_service                 = optional(string, "logging.googleapis.com/kubernetes")
+    monitoring_service              = optional(string, "monitoring.googleapis.com/kubernetes")
+    maintenance_window_start_time   = optional(string, "02:00")
   }))
   default = {}
 }

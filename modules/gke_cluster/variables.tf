@@ -71,6 +71,36 @@ variable "gateway_api_enabled" {
   default     = true
 }
 
+variable "enable_network_policy" {
+  description = "Enable Kubernetes NetworkPolicy enforcement (Calico)"
+  type        = bool
+  default     = true
+}
+
+variable "enable_shielded_nodes" {
+  description = "Enable Shielded GKE Nodes (secure boot, integrity monitoring)"
+  type        = bool
+  default     = true
+}
+
+variable "logging_service" {
+  description = "Logging service: logging.googleapis.com/kubernetes or none"
+  type        = string
+  default     = "logging.googleapis.com/kubernetes"
+}
+
+variable "monitoring_service" {
+  description = "Monitoring service: monitoring.googleapis.com/kubernetes or none"
+  type        = string
+  default     = "monitoring.googleapis.com/kubernetes"
+}
+
+variable "maintenance_window_start_time" {
+  description = "Daily maintenance window start time in UTC (HH:MM format)"
+  type        = string
+  default     = "02:00"
+}
+
 variable "labels" {
   description = "GCP labels to apply to the GKE cluster"
   type        = map(string)
