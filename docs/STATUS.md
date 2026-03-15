@@ -9,6 +9,9 @@
 5. **Identity & Ingress** - MERGED into database layer (WI bindings live in database layer now)
 6. **Application Deployment** - CURRENT (code ready, NOT yet applied)
 7. Monitoring & Polish - Cloud Monitoring, optimization, resilience testing
+8. **Gold Standard Hardening** — IN PROGRESS (feat/gold-standard-hardening branch)
+   - Labels, IAM hardening, GKE security, validation, testing, DRY
+   - Design doc: `docs/plans/2026-03-14-gold-standard-hardening-design.md`
 
 ---
 
