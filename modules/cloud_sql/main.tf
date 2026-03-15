@@ -30,6 +30,17 @@ resource "google_sql_database_instance" "this" {
       start_time = var.backup_enabled ? var.backup_start_time : null
     }
   }
+
+  lifecycle {
+    # Set to true for production — prevents terraform destroy from deleting the instance
+    # This is a code-level safeguard in addition to GCP's deletion_protection flag
+    prevent_destroy = false
+
+    postcondition {
+      condition     = !self.settings[0].ip_configuration[0].ipv4_enabled
+      error_message = "Cloud SQL must not have a public IP. Use private networking only."
+    }
+  }
 }
 
 resource "google_sql_database" "this" {
