@@ -11,13 +11,15 @@ output "sql_instance_names" {
 }
 
 output "sql_connection_names" {
-  description = "Map of SQL instance key => connection name (project:region:instance)"
+  description = "Map of Cloud SQL connection names"
   value       = { for k, v in module.sql_instances : k => v.connection_name }
+  sensitive   = true
 }
 
 output "sql_private_ips" {
-  description = "Map of SQL instance key => private IP address"
+  description = "Map of Cloud SQL private IPs"
   value       = { for k, v in module.sql_instances : k => v.private_ip }
+  sensitive   = true
 }
 
 output "sql_database_names" {

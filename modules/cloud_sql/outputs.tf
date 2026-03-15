@@ -11,11 +11,13 @@ output "instance_name" {
 output "connection_name" {
   description = "Cloud SQL connection name (project:region:instance) - used by Cloud SQL Proxy"
   value       = google_sql_database_instance.this.connection_name
+  sensitive   = true
 }
 
 output "private_ip" {
   description = "Private IP address of the Cloud SQL instance"
   value       = google_sql_database_instance.this.private_ip_address
+  sensitive   = true
 }
 
 output "database_name" {
