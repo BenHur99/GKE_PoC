@@ -79,4 +79,11 @@ resource "google_container_cluster" "this" {
       start_time = var.maintenance_window_start_time
     }
   }
+
+  lifecycle {
+    precondition {
+      condition     = var.pods_secondary_range_name != "" && var.services_secondary_range_name != ""
+      error_message = "GKE cluster requires both pods and services secondary range names for VPC-native networking."
+    }
+  }
 }
