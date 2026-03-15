@@ -8,6 +8,7 @@ module "naming" {
   product_name = var.product_name
   environment  = var.environment
   region       = var.region
+  layer        = "database"
 }
 
 # =============================================================================
@@ -44,6 +45,7 @@ module "sql_instances" {
   deletion_protection = each.value.deletion_protection
   backup_enabled      = each.value.backup_enabled
   backup_start_time   = each.value.backup_start_time
+  labels              = module.naming.common_labels
 
   depends_on = [module.apis]
 }

@@ -10,6 +10,7 @@ resource "google_sql_database_instance" "this" {
     disk_size         = var.disk_size
     disk_type         = var.disk_type
     availability_type = var.availability_type
+    user_labels       = var.labels
 
     ip_configuration {
       ipv4_enabled    = false

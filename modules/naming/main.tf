@@ -15,4 +15,13 @@ locals {
 
   region_short = lookup(local.region_short_map, var.region, replace(var.region, "-", ""))
   prefix       = "${var.client_name}-${var.product_name}-${var.environment}-${local.region_short}"
+
+  common_labels = merge({
+    client      = var.client_name
+    product     = var.product_name
+    environment = var.environment
+    region      = local.region_short
+    managed_by  = "terraform"
+    layer       = var.layer
+  }, var.extra_labels)
 }

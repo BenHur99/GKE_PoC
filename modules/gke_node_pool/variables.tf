@@ -71,3 +71,9 @@ variable "oauth_scopes" {
   type        = list(string)
   default     = ["https://www.googleapis.com/auth/cloud-platform"]
 }
+
+variable "labels" {
+  description = "GCP labels to apply to the node pool"
+  type        = map(string)
+  default     = {}
+}

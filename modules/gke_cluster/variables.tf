@@ -70,3 +70,9 @@ variable "gateway_api_enabled" {
   type        = bool
   default     = true
 }
+
+variable "labels" {
+  description = "GCP labels to apply to the GKE cluster"
+  type        = map(string)
+  default     = {}
+}

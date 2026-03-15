@@ -8,6 +8,7 @@ module "naming" {
   product_name = var.product_name
   environment  = var.environment
   region       = var.region
+  layer        = "automation"
 }
 
 # =============================================================================

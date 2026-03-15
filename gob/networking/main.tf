@@ -8,6 +8,7 @@ module "naming" {
   product_name = var.product_name
   environment  = var.environment
   region       = var.region
+  layer        = "networking"
 }
 
 # =============================================================================
@@ -125,4 +126,5 @@ module "static_ips" {
   region       = var.region
   address_type = each.value.address_type
   network_tier = each.value.network_tier
+  labels       = module.naming.common_labels
 }

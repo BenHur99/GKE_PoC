@@ -17,3 +17,14 @@ variable "region" {
   description = "GCP region (e.g. europe-west1)"
   type        = string
 }
+
+variable "layer" {
+  description = "Infrastructure layer name (networking, database, compute, automation)"
+  type        = string
+}
+
+variable "extra_labels" {
+  description = "Additional labels to merge with common labels"
+  type        = map(string)
+  default     = {}
+}

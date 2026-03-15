@@ -4,4 +4,5 @@ resource "google_compute_address" "this" {
   region       = var.region
   address_type = var.address_type
   network_tier = var.network_tier
+  labels       = var.labels
 }

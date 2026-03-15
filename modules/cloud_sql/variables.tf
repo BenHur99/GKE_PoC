@@ -74,3 +74,9 @@ variable "backup_start_time" {
   type        = string
   default     = "03:00"
 }
+
+variable "labels" {
+  description = "GCP labels to apply to the Cloud SQL instance"
+  type        = map(string)
+  default     = {}
+}

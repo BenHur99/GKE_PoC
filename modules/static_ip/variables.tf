@@ -24,3 +24,9 @@ variable "network_tier" {
   type        = string
   default     = "STANDARD"
 }
+
+variable "labels" {
+  description = "GCP labels to apply to the static IP"
+  type        = map(string)
+  default     = {}
+}

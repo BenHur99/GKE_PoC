@@ -25,5 +25,7 @@ resource "google_container_node_pool" "this" {
     workload_metadata_config {
       mode = "GKE_METADATA"
     }
+
+    resource_labels = var.labels
   }
 }

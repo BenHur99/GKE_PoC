@@ -11,6 +11,7 @@ resource "google_container_cluster" "this" {
   initial_node_count       = 1
 
   deletion_protection = var.deletion_protection
+  resource_labels     = var.labels
 
   # VPC-native networking using subnet secondary ranges
   ip_allocation_policy {
