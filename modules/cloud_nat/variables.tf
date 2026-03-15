@@ -22,6 +22,11 @@ variable "nat_ip_allocate_option" {
   description = "How external IPs are allocated: AUTO_ONLY or MANUAL_ONLY"
   type        = string
   default     = "AUTO_ONLY"
+
+  validation {
+    condition     = contains(["AUTO_ONLY", "MANUAL_ONLY"], var.nat_ip_allocate_option)
+    error_message = "NAT IP allocate option must be AUTO_ONLY or MANUAL_ONLY."
+  }
 }
 
 variable "source_subnetwork_ip_ranges_to_nat" {
@@ -46,4 +51,9 @@ variable "log_filter" {
   description = "NAT log filter: ERRORS_ONLY, TRANSLATIONS_ONLY, ALL"
   type        = string
   default     = "ERRORS_ONLY"
+
+  validation {
+    condition     = contains(["ERRORS_ONLY", "TRANSLATIONS_ONLY", "ALL"], var.log_filter)
+    error_message = "Log filter must be ERRORS_ONLY, TRANSLATIONS_ONLY, or ALL."
+  }
 }

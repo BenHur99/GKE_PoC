@@ -37,6 +37,11 @@ variable "master_ipv4_cidr_block" {
   description = "CIDR block for the control plane's private endpoint (must be /28, must not overlap with any subnet)"
   type        = string
   default     = "172.16.0.0/28"
+
+  validation {
+    condition     = can(cidrhost(var.master_ipv4_cidr_block, 0)) && endswith(var.master_ipv4_cidr_block, "/28")
+    error_message = "Master CIDR must be a valid /28 CIDR block."
+  }
 }
 
 variable "master_authorized_networks" {
@@ -51,6 +56,11 @@ variable "release_channel" {
   description = "GKE release channel: UNSPECIFIED, RAPID, REGULAR, STABLE"
   type        = string
   default     = "REGULAR"
+
+  validation {
+    condition     = contains(["UNSPECIFIED", "RAPID", "REGULAR", "STABLE"], var.release_channel)
+    error_message = "Release channel must be UNSPECIFIED, RAPID, REGULAR, or STABLE."
+  }
 }
 
 variable "workload_identity_enabled" {
@@ -87,18 +97,33 @@ variable "logging_service" {
   description = "Logging service: logging.googleapis.com/kubernetes or none"
   type        = string
   default     = "logging.googleapis.com/kubernetes"
+
+  validation {
+    condition     = contains(["logging.googleapis.com/kubernetes", "none"], var.logging_service)
+    error_message = "Logging service must be logging.googleapis.com/kubernetes or none."
+  }
 }
 
 variable "monitoring_service" {
   description = "Monitoring service: monitoring.googleapis.com/kubernetes or none"
   type        = string
   default     = "monitoring.googleapis.com/kubernetes"
+
+  validation {
+    condition     = contains(["monitoring.googleapis.com/kubernetes", "none"], var.monitoring_service)
+    error_message = "Monitoring service must be monitoring.googleapis.com/kubernetes or none."
+  }
 }
 
 variable "maintenance_window_start_time" {
   description = "Daily maintenance window start time in UTC (HH:MM format)"
   type        = string
   default     = "02:00"
+
+  validation {
+    condition     = can(regex("^([01]\\d|2[0-3]):[0-5]\\d$", var.maintenance_window_start_time))
+    error_message = "Maintenance window start time must be in HH:MM format."
+  }
 }
 
 variable "labels" {

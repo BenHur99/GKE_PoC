@@ -33,12 +33,22 @@ variable "disk_type" {
   description = "Disk type: PD_SSD or PD_HDD"
   type        = string
   default     = "PD_SSD"
+
+  validation {
+    condition     = contains(["PD_SSD", "PD_HDD"], var.disk_type)
+    error_message = "Disk type must be PD_SSD or PD_HDD."
+  }
 }
 
 variable "availability_type" {
   description = "ZONAL (single zone) or REGIONAL (HA with automatic failover)"
   type        = string
   default     = "ZONAL"
+
+  validation {
+    condition     = contains(["ZONAL", "REGIONAL"], var.availability_type)
+    error_message = "Availability type must be ZONAL or REGIONAL."
+  }
 }
 
 variable "network_id" {
@@ -73,6 +83,11 @@ variable "backup_start_time" {
   description = "HH:MM time for daily backup window (UTC)"
   type        = string
   default     = "03:00"
+
+  validation {
+    condition     = can(regex("^([01]\\d|2[0-3]):[0-5]\\d$", var.backup_start_time))
+    error_message = "Backup start time must be in HH:MM format (00:00-23:59)."
+  }
 }
 
 variable "labels" {

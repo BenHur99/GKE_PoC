@@ -27,6 +27,11 @@ variable "purpose" {
   description = "Subnet purpose: PRIVATE or REGIONAL_MANAGED_PROXY"
   type        = string
   default     = "PRIVATE"
+
+  validation {
+    condition     = contains(["PRIVATE", "REGIONAL_MANAGED_PROXY"], var.purpose)
+    error_message = "Purpose must be PRIVATE or REGIONAL_MANAGED_PROXY."
+  }
 }
 
 variable "role" {

@@ -52,6 +52,11 @@ variable "disk_type" {
   description = "Boot disk type: pd-standard, pd-ssd, pd-balanced"
   type        = string
   default     = "pd-standard"
+
+  validation {
+    condition     = contains(["pd-standard", "pd-ssd", "pd-balanced"], var.disk_type)
+    error_message = "Disk type must be pd-standard, pd-ssd, or pd-balanced."
+  }
 }
 
 variable "auto_repair" {
