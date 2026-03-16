@@ -13,6 +13,11 @@
    - Labels, IAM hardening, GKE security, validation, testing, DRY, naming module, tfvars templates
    - Design doc: `docs/plans/2026-03-14-gold-standard-hardening-design.md`
    - Implementation plan: `docs/plans/2026-03-14-gold-standard-hardening-implementation.md`
+9. **GCP Best Practices Hardening** — COMPLETE (feat/gold-standard-hardening branch, pending PR to main)
+   - Cloud NAT subnet restriction, Cloud SQL query insights + maintenance window
+   - GKE Dataplane V2, security posture scanning, COS_CONTAINERD image type
+   - Dedicated least-privilege node SA (replaces default Compute Engine SA)
+   - Design doc: `docs/plans/2026-03-16-gcp-best-practices-hardening.md`
 
 ---
 
@@ -38,7 +43,7 @@
 | FW Health Checks | orel-gob-dev-euw1-fw-allow-health-checks |
 | FW Proxy->Backend | orel-gob-dev-euw1-fw-allow-proxy-to-backends |
 | Cloud Router | orel-gob-dev-euw1-main-router |
-| Cloud NAT | orel-gob-dev-euw1-main-nat |
+| Cloud NAT | orel-gob-dev-euw1-main-nat (LIST_OF_SUBNETWORKS: gke only) |
 | PSA Allocation | orel-gob-dev-euw1-psa-google-managed (10.16.0.0/16) |
 | PSA Connection | servicenetworking.googleapis.com peering |
 | Static IP | orel-gob-dev-euw1-ip-ingress (Regional External, STANDARD tier) |
@@ -60,7 +65,7 @@
 
 | Resource | Name |
 |----------|------|
-| Cloud SQL Instance | orel-gob-dev-euw1-sql-main (PostgreSQL 15, db-f1-micro) |
+| Cloud SQL Instance | orel-gob-dev-euw1-sql-main (PostgreSQL 15, db-f1-micro, Query Insights ON, Maintenance: Sun 02:00 UTC) |
 | SQL Database | boutique |
 | Service Account | orel-gob-dev-euw1-sa-btq-sql |
 | IAM Binding | roles/cloudsql.client → GSA |
@@ -83,8 +88,9 @@
 
 | Resource | Name |
 |----------|------|
-| GKE Cluster | orel-gob-dev-euw1-gke-main (Zonal europe-west1-b, Private nodes, WI enabled) |
-| Node Pool | orel-gob-dev-euw1-gke-main-spot (Spot e2-medium, autoscaling 1-3) |
+| GKE Cluster | orel-gob-dev-euw1-gke-main (Zonal europe-west1-b, Private nodes, WI enabled, Dataplane V2, Security Posture BASIC) |
+| Node Pool | orel-gob-dev-euw1-gke-main-spot (Spot e2-medium, autoscaling 1-3, COS_CONTAINERD, dedicated node SA) |
+| Node SA | orel-gob-dev-euw1-sa-gke-nodes (least-privilege: logWriter, metricWriter, viewer, resourceMetadata, artifactregistry) |
 | API | container.googleapis.com |
 
 ---
@@ -177,13 +183,13 @@ The `gob/identity/` layer has been removed. Design doc: `docs/plans/2026-03-08-i
 1. **VPC Networks** - `orel-gob-dev-euw1-vpc-main` exists, Regional routing, no auto subnets
 2. **Subnets** - GKE subnet with secondary ranges, proxy subnet with REGIONAL_MANAGED_PROXY
 3. **Firewall** - 4 rules with correct priorities and sources
-4. **Cloud NAT** - NAT in europe-west1 with auto IPs
+4. **Cloud NAT** - NAT in europe-west1 with auto IPs, LIST_OF_SUBNETWORKS (gke subnet only)
 5. **PSA** - Allocated range 10.16.0.0/16 peered to servicenetworking
 6. **Static IP** - `orel-gob-dev-euw1-ip-ingress` exists, Regional, External, STANDARD tier
 7. **APIs** - 4 APIs enabled
 
 ### Database (after apply):
-1. **SQL > Instances** - `orel-gob-dev-euw1-sql-main` exists, PostgreSQL 15, db-f1-micro
+1. **SQL > Instances** - `orel-gob-dev-euw1-sql-main` exists, PostgreSQL 15, db-f1-micro, Query Insights enabled
 2. **SQL > Connections** - Private IP from 10.16.x.x range, NO Public IP
 3. **SQL > Databases** - `boutique` database exists
 4. **SQL > Flags** - `cloudsql.iam_authentication = on`
@@ -193,10 +199,11 @@ The `gob/identity/` layer has been removed. Design doc: `docs/plans/2026-03-08-i
 
 ### Compute (after apply):
 1. **Kubernetes Engine > Clusters** — `orel-gob-dev-euw1-gke-main` exists, Zonal (europe-west1-b), Standard mode
-2. **Cluster > Networking** — VPC-native, Pod range 10.4.0.0/14, Service range 10.8.0.0/20, Private cluster (nodes private, endpoint public)
-3. **Cluster > Security** — Workload Identity enabled, pool `orel-bh-sandbox.svc.id.goog`
-4. **Cluster > Nodes** — Pool `orel-gob-dev-euw1-gke-main-spot`, e2-medium, Spot, autoscaling 1-3, auto-repair, auto-upgrade
-5. **Master Authorized Networks** — configured (0.0.0.0/0 in dev)
+2. **Cluster > Networking** — VPC-native, Pod range 10.4.0.0/14, Service range 10.8.0.0/20, Private cluster (nodes private, endpoint public), Dataplane V2 (eBPF/Cilium)
+3. **Cluster > Security** — Workload Identity enabled, pool `orel-bh-sandbox.svc.id.goog`, Shielded Nodes, Security Posture BASIC + Vulnerability scanning
+4. **Cluster > Nodes** — Pool `orel-gob-dev-euw1-gke-main-spot`, e2-medium, Spot, autoscaling 1-3, auto-repair, auto-upgrade, COS_CONTAINERD image
+5. **Node SA** — `orel-gob-dev-euw1-sa-gke-nodes` with least-privilege roles (NOT default Compute Engine SA)
+6. **Master Authorized Networks** — configured (0.0.0.0/0 in dev)
 
 ### Automation (after apply):
 1. **IAM > Workload Identity Pools** - `orel-gob-dev-euw1-wip-github` exists with OIDC provider
@@ -215,10 +222,11 @@ The `gob/identity/` layer has been removed. Design doc: `docs/plans/2026-03-08-i
 
 ---
 
-## Module Reference (13 modules)
+## Module Reference (14 modules)
 
 | Module | GCP Resource(s) | Stage |
 |--------|-----------------|-------|
+| `naming/` | locals (prefix + labels) | all |
 | `vpc/` | google_compute_network | 1 |
 | `subnet/` | google_compute_subnetwork | 1 |
 | `firewall_rule/` | google_compute_firewall | 1 |
@@ -249,3 +257,4 @@ All modules live under `modules/`. Each has: `main.tf`, `variables.tf`, `outputs
 - `docs/plans/2026-03-09-app-deployment-design.md` - Application Deployment design document
 - `docs/plans/2026-03-09-app-deployment-implementation.md` - Application Deployment implementation plan
 - `docs/plans/2026-03-14-claude-code-refactoring-design.md` - Claude Code configuration refactoring plan
+- `docs/plans/2026-03-16-gcp-best-practices-hardening.md` - GCP Best Practices hardening (Cloud NAT, SQL insights, Dataplane V2, node SA)
