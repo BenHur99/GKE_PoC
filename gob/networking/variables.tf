@@ -73,6 +73,7 @@ variable "cloud_nats" {
     vpc_key                            = string
     nat_ip_allocate_option             = optional(string, "AUTO_ONLY")
     source_subnetwork_ip_ranges_to_nat = optional(string, "ALL_SUBNETWORKS_ALL_IP_RANGES")
+    subnet_keys                        = optional(list(string), [])
     min_ports_per_vm                   = optional(number, 64)
     max_ports_per_vm                   = optional(number, 4096)
     log_filter                         = optional(string, "ERRORS_ONLY")

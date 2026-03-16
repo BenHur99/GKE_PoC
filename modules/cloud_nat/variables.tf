@@ -35,6 +35,15 @@ variable "source_subnetwork_ip_ranges_to_nat" {
   default     = "ALL_SUBNETWORKS_ALL_IP_RANGES"
 }
 
+variable "subnetworks" {
+  description = "List of subnet self_links to NAT (used when source_subnetwork_ip_ranges_to_nat = LIST_OF_SUBNETWORKS)"
+  type = list(object({
+    name                    = string
+    source_ip_ranges_to_nat = optional(list(string), ["ALL_IP_RANGES"])
+  }))
+  default = []
+}
+
 variable "min_ports_per_vm" {
   description = "Minimum number of ports per VM"
   type        = number

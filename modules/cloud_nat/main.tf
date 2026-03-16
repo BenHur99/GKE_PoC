@@ -15,6 +15,14 @@ resource "google_compute_router_nat" "this" {
   min_ports_per_vm                   = var.min_ports_per_vm
   max_ports_per_vm                   = var.max_ports_per_vm
 
+  dynamic "subnetwork" {
+    for_each = var.subnetworks
+    content {
+      name                    = subnetwork.value.name
+      source_ip_ranges_to_nat = subnetwork.value.source_ip_ranges_to_nat
+    }
+  }
+
   log_config {
     enable = true
     filter = var.log_filter

@@ -91,7 +91,9 @@ firewall_rules = {
 
 cloud_nats = {
   "main" = {
-    vpc_key = "main"
+    vpc_key                            = "main"
+    source_subnetwork_ip_ranges_to_nat = "LIST_OF_SUBNETWORKS"
+    subnet_keys                        = ["gke"]
   }
 }
 
