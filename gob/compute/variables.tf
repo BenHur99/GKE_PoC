@@ -86,6 +86,20 @@ variable "node_pools" {
     auto_upgrade   = optional(bool, true)
     oauth_scopes   = optional(list(string), ["https://www.googleapis.com/auth/cloud-platform"])
     image_type     = optional(string, "COS_CONTAINERD")
+    node_sa_key    = optional(string, "")
+  }))
+  default = {}
+}
+
+# =============================================================================
+# Node Service Accounts
+# =============================================================================
+
+variable "node_service_accounts" {
+  description = "Map of GKE node service account configurations. Key = SA name suffix."
+  type = map(object({
+    display_name = optional(string, "")
+    description  = optional(string, "")
   }))
   default = {}
 }

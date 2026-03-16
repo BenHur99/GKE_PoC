@@ -17,6 +17,17 @@ apis = [
 ]
 
 # =============================================================================
+# Node Service Accounts (least-privilege, replaces Compute Engine default SA)
+# =============================================================================
+
+node_service_accounts = {
+  "gke-nodes" = {
+    display_name = "GKE Node SA"
+    description  = "Least-privilege SA for GKE nodes — replaces default Compute Engine SA (roles/editor)"
+  }
+}
+
+# =============================================================================
 # GKE Clusters
 # =============================================================================
 
@@ -48,5 +59,6 @@ node_pools = {
     min_node_count = 1
     max_node_count = 3
     disk_size_gb   = 50
+    node_sa_key    = "gke-nodes"
   }
 }

@@ -39,6 +39,13 @@ output "node_pool_names" {
   value       = { for k, v in module.node_pools : k => v.name }
 }
 
+# --- Node Service Accounts ---
+
+output "node_service_account_emails" {
+  description = "Map of node SA key => service account email"
+  value       = { for k, v in module.node_service_accounts : k => v.email }
+}
+
 # --- Naming ---
 
 output "naming_prefix" {

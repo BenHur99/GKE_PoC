@@ -88,6 +88,12 @@ variable "image_type" {
   }
 }
 
+variable "service_account" {
+  description = "Service account email for the node pool. If empty, uses Compute Engine default SA (NOT recommended)."
+  type        = string
+  default     = ""
+}
+
 variable "labels" {
   description = "GCP labels to apply to the node pool"
   type        = map(string)
