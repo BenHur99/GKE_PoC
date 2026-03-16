@@ -30,9 +30,14 @@ variable "nat_ip_allocate_option" {
 }
 
 variable "source_subnetwork_ip_ranges_to_nat" {
-  description = "Which subnet ranges to NAT"
+  description = "Which subnet ranges to NAT: ALL_SUBNETWORKS_ALL_IP_RANGES, ALL_SUBNETWORKS_ALL_PRIMARY_IP_RANGES, or LIST_OF_SUBNETWORKS"
   type        = string
   default     = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+
+  validation {
+    condition     = contains(["ALL_SUBNETWORKS_ALL_IP_RANGES", "ALL_SUBNETWORKS_ALL_PRIMARY_IP_RANGES", "LIST_OF_SUBNETWORKS"], var.source_subnetwork_ip_ranges_to_nat)
+    error_message = "Must be ALL_SUBNETWORKS_ALL_IP_RANGES, ALL_SUBNETWORKS_ALL_PRIMARY_IP_RANGES, or LIST_OF_SUBNETWORKS."
+  }
 }
 
 variable "subnetworks" {
