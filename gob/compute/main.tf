@@ -50,6 +50,9 @@ module "gke_clusters" {
   logging_service                 = each.value.logging_service
   monitoring_service              = each.value.monitoring_service
   maintenance_window_start_time   = each.value.maintenance_window_start_time
+  datapath_provider                       = each.value.datapath_provider
+  security_posture_mode                   = each.value.security_posture_mode
+  security_posture_vulnerability_mode     = each.value.security_posture_vulnerability_mode
   labels                     = module.naming.common_labels
 
   depends_on = [module.apis]
@@ -77,5 +80,6 @@ module "node_pools" {
   auto_repair    = each.value.auto_repair
   auto_upgrade   = each.value.auto_upgrade
   oauth_scopes   = each.value.oauth_scopes
+  image_type     = each.value.image_type
   labels         = module.naming.common_labels
 }

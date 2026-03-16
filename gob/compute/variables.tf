@@ -61,6 +61,9 @@ variable "gke_clusters" {
     logging_service                 = optional(string, "logging.googleapis.com/kubernetes")
     monitoring_service              = optional(string, "monitoring.googleapis.com/kubernetes")
     maintenance_window_start_time   = optional(string, "02:00")
+    datapath_provider                       = optional(string, "ADVANCED_DATAPATH")
+    security_posture_mode                   = optional(string, "BASIC")
+    security_posture_vulnerability_mode     = optional(string, "VULNERABILITY_BASIC")
   }))
   default = {}
 }
@@ -82,6 +85,7 @@ variable "node_pools" {
     auto_repair    = optional(bool, true)
     auto_upgrade   = optional(bool, true)
     oauth_scopes   = optional(list(string), ["https://www.googleapis.com/auth/cloud-platform"])
+    image_type     = optional(string, "COS_CONTAINERD")
   }))
   default = {}
 }

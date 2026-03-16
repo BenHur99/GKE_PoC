@@ -77,6 +77,17 @@ variable "oauth_scopes" {
   default     = ["https://www.googleapis.com/auth/cloud-platform"]
 }
 
+variable "image_type" {
+  description = "Node OS image type: COS_CONTAINERD (hardened, recommended) or UBUNTU_CONTAINERD"
+  type        = string
+  default     = "COS_CONTAINERD"
+
+  validation {
+    condition     = contains(["COS_CONTAINERD", "UBUNTU_CONTAINERD"], var.image_type)
+    error_message = "Image type must be COS_CONTAINERD or UBUNTU_CONTAINERD."
+  }
+}
+
 variable "labels" {
   description = "GCP labels to apply to the node pool"
   type        = map(string)

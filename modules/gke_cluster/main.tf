@@ -64,6 +64,15 @@ resource "google_container_cluster" "this" {
   # Shielded Nodes — integrity monitoring and secure boot
   enable_shielded_nodes = var.enable_shielded_nodes
 
+  # Dataplane V2 (eBPF/Cilium) — replaces kube-proxy, built-in Network Policy
+  datapath_provider = var.datapath_provider
+
+  # Security Posture — free vulnerability and misconfiguration scanning
+  security_posture_config {
+    mode               = var.security_posture_mode
+    vulnerability_mode = var.security_posture_vulnerability_mode
+  }
+
   # Logging and Monitoring
   logging_service    = var.logging_service
   monitoring_service = var.monitoring_service

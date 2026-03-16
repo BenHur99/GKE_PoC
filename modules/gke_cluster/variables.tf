@@ -120,6 +120,39 @@ variable "maintenance_window_start_time" {
   }
 }
 
+variable "datapath_provider" {
+  description = "Datapath provider: LEGACY_DATAPATH (kube-proxy) or ADVANCED_DATAPATH (Dataplane V2 / Cilium). Dataplane V2 provides built-in Network Policy enforcement, eBPF-based networking, and better observability."
+  type        = string
+  default     = "ADVANCED_DATAPATH"
+
+  validation {
+    condition     = contains(["LEGACY_DATAPATH", "ADVANCED_DATAPATH"], var.datapath_provider)
+    error_message = "Datapath provider must be LEGACY_DATAPATH or ADVANCED_DATAPATH."
+  }
+}
+
+variable "security_posture_mode" {
+  description = "Security posture mode: DISABLED or BASIC (free). BASIC scans for vulnerabilities and misconfigurations."
+  type        = string
+  default     = "BASIC"
+
+  validation {
+    condition     = contains(["DISABLED", "BASIC"], var.security_posture_mode)
+    error_message = "Security posture mode must be DISABLED or BASIC."
+  }
+}
+
+variable "security_posture_vulnerability_mode" {
+  description = "Vulnerability scanning mode: DISABLED or VULNERABILITY_BASIC (free). Scans container images for known CVEs."
+  type        = string
+  default     = "VULNERABILITY_BASIC"
+
+  validation {
+    condition     = contains(["DISABLED", "VULNERABILITY_BASIC"], var.security_posture_vulnerability_mode)
+    error_message = "Vulnerability mode must be DISABLED or VULNERABILITY_BASIC."
+  }
+}
+
 variable "labels" {
   description = "GCP labels to apply to the GKE cluster"
   type        = map(string)
