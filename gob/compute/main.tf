@@ -69,20 +69,20 @@ module "gke_clusters" {
   pods_secondary_range_name     = data.terraform_remote_state.networking.outputs.subnet_secondary_range_names[each.value.subnet_key][each.value.pods_secondary_range_key]
   services_secondary_range_name = data.terraform_remote_state.networking.outputs.subnet_secondary_range_names[each.value.subnet_key][each.value.services_secondary_range_key]
 
-  master_ipv4_cidr_block     = each.value.master_ipv4_cidr_block
-  release_channel            = each.value.release_channel
-  workload_identity_enabled  = each.value.workload_identity_enabled
-  deletion_protection        = each.value.deletion_protection
-  gateway_api_enabled        = each.value.gateway_api_enabled
-  master_authorized_networks = each.value.master_authorized_networks
-  enable_shielded_nodes           = each.value.enable_shielded_nodes
-  logging_service                 = each.value.logging_service
-  monitoring_service              = each.value.monitoring_service
-  maintenance_window_start_time   = each.value.maintenance_window_start_time
-  datapath_provider                       = each.value.datapath_provider
-  security_posture_mode                   = each.value.security_posture_mode
-  security_posture_vulnerability_mode     = each.value.security_posture_vulnerability_mode
-  labels                     = module.naming.common_labels
+  master_ipv4_cidr_block              = each.value.master_ipv4_cidr_block
+  release_channel                     = each.value.release_channel
+  workload_identity_enabled           = each.value.workload_identity_enabled
+  deletion_protection                 = each.value.deletion_protection
+  gateway_api_enabled                 = each.value.gateway_api_enabled
+  master_authorized_networks          = each.value.master_authorized_networks
+  enable_shielded_nodes               = each.value.enable_shielded_nodes
+  logging_service                     = each.value.logging_service
+  monitoring_service                  = each.value.monitoring_service
+  maintenance_window_start_time       = each.value.maintenance_window_start_time
+  datapath_provider                   = each.value.datapath_provider
+  security_posture_mode               = each.value.security_posture_mode
+  security_posture_vulnerability_mode = each.value.security_posture_vulnerability_mode
+  labels                              = module.naming.common_labels
 
   depends_on = [module.apis]
 }

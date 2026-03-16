@@ -44,26 +44,26 @@ variable "apis" {
 variable "gke_clusters" {
   description = "Map of GKE cluster configurations. Key = cluster name suffix."
   type = map(object({
-    vpc_key                       = optional(string, "main")
-    subnet_key                    = string
-    pods_secondary_range_key      = optional(string, "pods")
-    services_secondary_range_key  = optional(string, "services")
-    zone                          = string
-    master_ipv4_cidr_block        = optional(string, "172.16.0.0/28")
-    release_channel               = optional(string, "REGULAR")
-    workload_identity_enabled     = optional(bool, true)
-    deletion_protection           = optional(bool, false)
-    gateway_api_enabled           = optional(bool, true)
-    master_authorized_networks    = optional(map(object({
+    vpc_key                             = optional(string, "main")
+    subnet_key                          = string
+    pods_secondary_range_key            = optional(string, "pods")
+    services_secondary_range_key        = optional(string, "services")
+    zone                                = string
+    master_ipv4_cidr_block              = optional(string, "172.16.0.0/28")
+    release_channel                     = optional(string, "REGULAR")
+    workload_identity_enabled           = optional(bool, true)
+    deletion_protection                 = optional(bool, false)
+    gateway_api_enabled                 = optional(bool, true)
+    master_authorized_networks          = optional(map(object({
       cidr_block = string
     })), {})
-    enable_shielded_nodes           = optional(bool, true)
-    logging_service                 = optional(string, "logging.googleapis.com/kubernetes")
-    monitoring_service              = optional(string, "monitoring.googleapis.com/kubernetes")
-    maintenance_window_start_time   = optional(string, "02:00")
-    datapath_provider                       = optional(string, "ADVANCED_DATAPATH")
-    security_posture_mode                   = optional(string, "BASIC")
-    security_posture_vulnerability_mode     = optional(string, "VULNERABILITY_BASIC")
+    enable_shielded_nodes               = optional(bool, true)
+    logging_service                     = optional(string, "logging.googleapis.com/kubernetes")
+    monitoring_service                  = optional(string, "monitoring.googleapis.com/kubernetes")
+    maintenance_window_start_time       = optional(string, "02:00")
+    datapath_provider                   = optional(string, "ADVANCED_DATAPATH")
+    security_posture_mode               = optional(string, "BASIC")
+    security_posture_vulnerability_mode = optional(string, "VULNERABILITY_BASIC")
   }))
   default = {}
 }
