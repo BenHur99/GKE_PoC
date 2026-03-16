@@ -46,6 +46,10 @@ module "sql_instances" {
   backup_enabled      = each.value.backup_enabled
   backup_start_time   = each.value.backup_start_time
   labels              = module.naming.common_labels
+  query_insights_enabled          = each.value.query_insights_enabled
+  maintenance_window_day          = each.value.maintenance_window_day
+  maintenance_window_hour         = each.value.maintenance_window_hour
+  maintenance_window_update_track = each.value.maintenance_window_update_track
 
   depends_on = [module.apis]
 }

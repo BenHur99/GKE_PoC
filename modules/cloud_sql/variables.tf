@@ -90,6 +90,45 @@ variable "backup_start_time" {
   }
 }
 
+variable "query_insights_enabled" {
+  description = "Enable Query Insights (free on PostgreSQL — shows slow queries, execution plans, lock analysis)"
+  type        = bool
+  default     = true
+}
+
+variable "maintenance_window_day" {
+  description = "Day of week for maintenance window (1=Mon, 7=Sun). Prevents patching during business hours."
+  type        = number
+  default     = 7
+
+  validation {
+    condition     = var.maintenance_window_day >= 1 && var.maintenance_window_day <= 7
+    error_message = "Maintenance window day must be 1 (Monday) through 7 (Sunday)."
+  }
+}
+
+variable "maintenance_window_hour" {
+  description = "Hour of day (UTC) for maintenance window start (0-23)"
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.maintenance_window_hour >= 0 && var.maintenance_window_hour <= 23
+    error_message = "Maintenance window hour must be 0-23."
+  }
+}
+
+variable "maintenance_window_update_track" {
+  description = "Maintenance update track: canary (early) or stable (delayed)"
+  type        = string
+  default     = "stable"
+
+  validation {
+    condition     = contains(["canary", "stable"], var.maintenance_window_update_track)
+    error_message = "Update track must be canary or stable."
+  }
+}
+
 variable "labels" {
   description = "GCP labels to apply to the Cloud SQL instance"
   type        = map(string)

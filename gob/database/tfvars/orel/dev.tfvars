@@ -36,6 +36,9 @@ sql_instances = {
     database_flags = {
       "cloudsql.iam_authentication" = "on"
     }
+    # Maintenance: Sunday 2:00 AM UTC — prevents patching during work hours
+    maintenance_window_day  = 7
+    maintenance_window_hour = 2
   }
 }
 

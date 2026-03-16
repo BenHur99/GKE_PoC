@@ -29,6 +29,20 @@ resource "google_sql_database_instance" "this" {
       enabled    = var.backup_enabled
       start_time = var.backup_enabled ? var.backup_start_time : null
     }
+
+    insights_config {
+      query_insights_enabled  = var.query_insights_enabled
+      query_plans_per_minute  = 5
+      query_string_length     = 1024
+      record_application_tags = true
+      record_client_address   = true
+    }
+
+    maintenance_window {
+      day          = var.maintenance_window_day
+      hour         = var.maintenance_window_hour
+      update_track = var.maintenance_window_update_track
+    }
   }
 
   lifecycle {
