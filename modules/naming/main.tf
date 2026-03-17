@@ -24,4 +24,6 @@ locals {
     managed_by  = "terraform"
     layer       = var.layer
   }, var.extra_labels)
+
+  gke_node_tag = "${var.client_name}-${var.product_name}-${var.environment}-gke-node"
 }

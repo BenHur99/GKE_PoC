@@ -61,7 +61,7 @@ module "subnets" {
 # =============================================================================
 
 module "firewall_rules" {
-  for_each = var.firewall_rules
+  for_each = local.firewall_rules_resolved
   source   = "../../modules/firewall_rule"
 
   name               = "${local.naming_prefix}-fw-${each.key}"

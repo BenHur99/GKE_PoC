@@ -99,3 +99,9 @@ variable "labels" {
   type        = map(string)
   default     = {}
 }
+
+variable "network_tags" {
+  description = "Network tags applied to node VMs — used for firewall rule targeting"
+  type        = list(string)
+  default     = []
+}

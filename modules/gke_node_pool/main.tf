@@ -29,5 +29,6 @@ resource "google_container_node_pool" "this" {
     }
 
     resource_labels = var.labels
+    tags            = var.network_tags
   }
 }

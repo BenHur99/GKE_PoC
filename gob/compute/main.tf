@@ -111,5 +111,6 @@ module "node_pools" {
   oauth_scopes   = each.value.oauth_scopes
   image_type     = each.value.image_type
   service_account = each.value.node_sa_key != "" ? module.node_service_accounts[each.value.node_sa_key].email : ""
-  labels         = module.naming.common_labels
+  labels          = module.naming.common_labels
+  network_tags    = concat(each.value.network_tags, [module.naming.gke_node_tag])
 }

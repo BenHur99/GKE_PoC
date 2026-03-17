@@ -87,6 +87,7 @@ variable "node_pools" {
     oauth_scopes   = optional(list(string), ["https://www.googleapis.com/auth/cloud-platform"])
     image_type     = optional(string, "COS_CONTAINERD")
     node_sa_key    = optional(string, "")
+    network_tags   = optional(list(string), [])
   }))
   default = {}
 }
