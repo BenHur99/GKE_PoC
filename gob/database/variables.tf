@@ -55,6 +55,10 @@ variable "sql_instances" {
     backup_start_time   = optional(string, "03:00")
     database_flags      = optional(map(string), {})
     vpc_key             = optional(string, "main")
+    query_insights_enabled          = optional(bool, true)
+    maintenance_window_day          = optional(number, 7)
+    maintenance_window_hour         = optional(number, 2)
+    maintenance_window_update_track = optional(string, "stable")
   }))
   default = {}
 }

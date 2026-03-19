@@ -11,6 +11,7 @@ resource "google_container_cluster" "this" {
   initial_node_count       = 1
 
   deletion_protection = var.deletion_protection
+  resource_labels     = var.labels
 
   # VPC-native networking using subnet secondary ranges
   ip_allocation_policy {
@@ -57,6 +58,36 @@ resource "google_container_cluster" "this" {
     for_each = var.gateway_api_enabled ? [1] : []
     content {
       channel = "CHANNEL_STANDARD"
+    }
+  }
+
+  # Shielded Nodes — integrity monitoring and secure boot
+  enable_shielded_nodes = var.enable_shielded_nodes
+
+  # Dataplane V2 (eBPF/Cilium) — replaces kube-proxy, built-in Network Policy
+  datapath_provider = var.datapath_provider
+
+  # Security Posture — free vulnerability and misconfiguration scanning
+  security_posture_config {
+    mode               = var.security_posture_mode
+    vulnerability_mode = var.security_posture_vulnerability_mode
+  }
+
+  # Logging and Monitoring
+  logging_service    = var.logging_service
+  monitoring_service = var.monitoring_service
+
+  # Maintenance Window — controls when GKE can perform automatic maintenance
+  maintenance_policy {
+    daily_maintenance_window {
+      start_time = var.maintenance_window_start_time
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = var.pods_secondary_range_name != "" && var.services_secondary_range_name != ""
+      error_message = "GKE cluster requires both pods and services secondary range names for VPC-native networking."
     }
   }
 }

@@ -10,6 +10,7 @@ resource "google_sql_database_instance" "this" {
     disk_size         = var.disk_size
     disk_type         = var.disk_type
     availability_type = var.availability_type
+    user_labels       = var.labels
 
     ip_configuration {
       ipv4_enabled    = false
@@ -27,6 +28,31 @@ resource "google_sql_database_instance" "this" {
     backup_configuration {
       enabled    = var.backup_enabled
       start_time = var.backup_enabled ? var.backup_start_time : null
+    }
+
+    insights_config {
+      query_insights_enabled  = var.query_insights_enabled
+      query_plans_per_minute  = 5
+      query_string_length     = 1024
+      record_application_tags = true
+      record_client_address   = true
+    }
+
+    maintenance_window {
+      day          = var.maintenance_window_day
+      hour         = var.maintenance_window_hour
+      update_track = var.maintenance_window_update_track
+    }
+  }
+
+  lifecycle {
+    # Set to true for production — prevents terraform destroy from deleting the instance
+    # This is a code-level safeguard in addition to GCP's deletion_protection flag
+    prevent_destroy = false
+
+    postcondition {
+      condition     = !self.settings[0].ip_configuration[0].ipv4_enabled
+      error_message = "Cloud SQL must not have a public IP. Use private networking only."
     }
   }
 }

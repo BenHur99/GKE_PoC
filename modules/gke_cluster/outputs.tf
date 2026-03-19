@@ -11,6 +11,7 @@ output "name" {
 output "endpoint" {
   description = "GKE cluster API endpoint"
   value       = google_container_cluster.this.endpoint
+  sensitive   = true
 }
 
 output "ca_certificate" {

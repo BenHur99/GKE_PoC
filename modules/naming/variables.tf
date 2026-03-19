@@ -1,0 +1,35 @@
+variable "client_name" {
+  description = "Client name (e.g. orel)"
+  type        = string
+}
+
+variable "product_name" {
+  description = "Product name (e.g. gob)"
+  type        = string
+}
+
+variable "environment" {
+  description = "Environment (e.g. dev, staging, prod)"
+  type        = string
+
+  validation {
+    condition     = contains(["dev", "staging", "prod"], var.environment)
+    error_message = "Environment must be dev, staging, or prod."
+  }
+}
+
+variable "region" {
+  description = "GCP region (e.g. europe-west1)"
+  type        = string
+}
+
+variable "layer" {
+  description = "Infrastructure layer name (networking, database, compute, automation)"
+  type        = string
+}
+
+variable "extra_labels" {
+  description = "Additional labels to merge with common labels"
+  type        = map(string)
+  default     = {}
+}

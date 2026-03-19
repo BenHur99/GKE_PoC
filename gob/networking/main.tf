@@ -1,4 +1,17 @@
 # =============================================================================
+# Naming
+# =============================================================================
+
+module "naming" {
+  source       = "../../modules/naming"
+  client_name  = var.client_name
+  product_name = var.product_name
+  environment  = var.environment
+  region       = var.region
+  layer        = "networking"
+}
+
+# =============================================================================
 # APIs
 # =============================================================================
 
@@ -48,7 +61,7 @@ module "subnets" {
 # =============================================================================
 
 module "firewall_rules" {
-  for_each = var.firewall_rules
+  for_each = local.firewall_rules_resolved
   source   = "../../modules/firewall_rule"
 
   name               = "${local.naming_prefix}-fw-${each.key}"
@@ -79,6 +92,11 @@ module "cloud_nats" {
   network_id                         = module.vpcs[each.value.vpc_key].id
   nat_ip_allocate_option             = each.value.nat_ip_allocate_option
   source_subnetwork_ip_ranges_to_nat = each.value.source_subnetwork_ip_ranges_to_nat
+  subnetworks = [
+    for sk in each.value.subnet_keys : {
+      name = module.subnets[sk].self_link
+    }
+  ]
   min_ports_per_vm                   = each.value.min_ports_per_vm
   max_ports_per_vm                   = each.value.max_ports_per_vm
   log_filter                         = each.value.log_filter
@@ -113,4 +131,5 @@ module "static_ips" {
   region       = var.region
   address_type = each.value.address_type
   network_tier = each.value.network_tier
+  labels       = module.naming.common_labels
 }

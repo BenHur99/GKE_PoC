@@ -11,8 +11,9 @@ output "cluster_names" {
 }
 
 output "cluster_endpoints" {
-  description = "Map of cluster key => API endpoint"
+  description = "Map of GKE cluster endpoints"
   value       = { for k, v in module.gke_clusters : k => v.endpoint }
+  sensitive   = true
 }
 
 output "cluster_ca_certificates" {
@@ -36,6 +37,13 @@ output "node_pool_ids" {
 output "node_pool_names" {
   description = "Map of node pool key => node pool name"
   value       = { for k, v in module.node_pools : k => v.name }
+}
+
+# --- Node Service Accounts ---
+
+output "node_service_account_emails" {
+  description = "Map of node SA key => service account email"
+  value       = { for k, v in module.node_service_accounts : k => v.email }
 }
 
 # --- Naming ---

@@ -17,6 +17,17 @@ apis = [
 ]
 
 # =============================================================================
+# Node Service Accounts (least-privilege, replaces Compute Engine default SA)
+# =============================================================================
+
+node_service_accounts = {
+  "gke-nodes" = {
+    display_name = "GKE Node SA"
+    description  = "Least-privilege SA for GKE nodes — replaces default Compute Engine SA (roles/editor)"
+  }
+}
+
+# =============================================================================
 # GKE Clusters
 # =============================================================================
 
@@ -26,6 +37,8 @@ gke_clusters = {
     zone                   = "europe-west1-b"
     master_ipv4_cidr_block = "172.16.0.0/28"
     release_channel        = "REGULAR"
+    # DEV ONLY: Open to all IPs for ephemeral development environment.
+    # For staging/prod: restrict to office IPs, VPN ranges, and CI/CD runner IPs.
     master_authorized_networks = {
       "allow-all" = {
         cidr_block = "0.0.0.0/0"
@@ -46,5 +59,6 @@ node_pools = {
     min_node_count = 1
     max_node_count = 3
     disk_size_gb   = 50
+    node_sa_key    = "gke-nodes"
   }
 }
